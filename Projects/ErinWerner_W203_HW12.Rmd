@@ -1,0 +1,386 @@
+---
+title: "W203 Homework 12"
+author: "Section 6"
+subtitle: Erin Werner
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+#OLS Inference
+
+The goal of this model is to measure how much the YouTube video quality affects the amount of views the video recieves.
+
+This can be accomplished by using the video ratings as a proxy variable to the video quality. A high quality video is assumed to have similarly high ratings. The 'rate' variable represents the average user rating of the video. The number of views are represented by the variable 'views'. Together, these factors allow us to build an OLS Regression Model that is able to provide insight to how much the video quality impacts the amount of video views.
+
+```{r, message = FALSE}
+library(ggplot2)
+library(lmtest)
+library(sandwich)
+library(stargazer)
+library(car)
+library(lindia)
+library(lsr)
+```
+
+```{r}
+videos <- read.delim("~/Downloads/unit_12_hw-master/videos.txt")
+```
+
+```{r}
+paste("Sample Size: ", nrow(videos))
+```
+
+There are some rows with null values for our 'views' variables that need to be removed for our model.
+
+```{r}
+videos <- videos[-which(is.na(videos$views)),]
+paste("Sample Size: ", nrow(videos))
+```
+
+Our data set is still very large (9609 > 30), so we are able to rely on asymptotic assumptions of normality under a version of the Central Limit Theorem.
+
+```{r}
+summary(videos)
+```
+
+#1. Model Specification
+
+Using diagnostic plots and numerical tools, I am able to build a single model specification that will help to determine how much quality impacts views.
+
+First, we will take a look at our dependent variable (Y), which is 'views'.
+
+```{r}
+summary(videos$views)
+```
+
+This is an extremely wide range of values, spanning from 3 to over a million.
+
+```{r}
+ggplot(videos, aes(views)) + 
+  geom_histogram(binwidth = 100000, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Video Views",
+       x = "# of Views",
+       y = "Frequency")
+```
+
+Due to the large range of values with some outlying points, there is a major positive right skew in our histogram. As a result, it is hard to observe the distribution of the number of views.
+
+We can try to use the log(views) transformation to better understand the variables.
+
+```{r}
+summary(log(videos$views))
+```
+
+```{r}
+ggplot(videos, aes(log(views))) + 
+  geom_histogram(binwidth = 1, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Video Views",
+       x = "Log(# of Views)",
+       y = "Frequency")
+```
+
+Now, we can see that the values of log(views) do, indeed, follow a normal distribution. 
+
+Next, we will take a look at our independent variable (X), which is 'rate'.
+
+```{r}
+summary(videos$rate)
+```
+
+This is a very standard scoring range, with low scores (closer to zero) indicating more dissapproving sentiments where high scores (closer to 5) reflect approving sentiments. So, in this research context, a score of 5 acts as a proxy for a video with great quality and a score of 0 represents poor quality.
+
+```{r}
+ggplot(videos, aes(rate)) + 
+  geom_histogram(binwidth = 0.5, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Video Ratings",
+       x = "Rate",
+       y = "Frequency")
+```
+
+We can see that the rating values do not necessarily follow a normal distribution. Many videos recieve an extreme rating as there are peaks at each end of the histogram. So, there are not many ratings that express neutral sentiments. This could possibly be due to the fact that viewers are less likly to make the effort to rate something if they have neutral/not strong feelings about it. However, since we know that our sample size is over 9000, which is much greater than 30, we can rely on asymptotic assumptions of normality under a version of the Central Limit Theorem.
+
+Now, we can look at the relationship between our independent and dependent variables.
+
+```{r}
+ggplot(videos, aes(x=rate, y=views)) + 
+  geom_point() +
+  geom_smooth(method="loess", se=F) +
+  geom_smooth(method="lm", se=FALSE, color = "red") +
+  labs(y="Views", 
+       x="Rate", 
+       title="Views vs. Rate")
+```
+
+Once again, it is difficult to see the relationship due to the wide range of 'views' values in addition to some outlying points. So, we will observe the log(views) to gain a better understanding.
+
+```{r}
+ggplot(videos, aes(x=rate, y=log(views))) + 
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE, color = "red") +
+  geom_smooth(method="loess", se=F) +
+  labs(y="Log(Views)", 
+       x="Rate", 
+       title="Log(Views) vs. Rate")
+```
+
+Above, we notice the scatterplot of log(views) vs. rate as well as the regression line predicted by our model. There is a slight bend towards the right of the spline curve, most likely due to the density of points in that area. Otherwise, both regression lines demonstrate that there appears to be a positive relationship between ratings and the percent change in the number of views.
+
+As a result, it is fair claim that implementing the log transformation of the number of views will be more useful for our regression model. This transformation means that the we will be using the ratings to determine the percent change in the number of views now. Thus, a unit change in the rating (the X/independent variable) will result in a percent change in the number of views (the Y/dependent variable). With this modified intrepretation, we are still able to see how much the video quality impacts the number of views.
+
+```{r}
+videos$log_views <- log(videos$views)
+```
+
+```{r, warning=FALSE}
+scatterplotMatrix(videos[,c("log_views", "rate")], diagonal = "histogram")
+```
+
+From the above scatterplot matrix, we can observe that ratings and log(views) appear to have a positive relationship. An increase in the rating score shows an increase in the percent of views. This could indicate that the number views tends to be higher for videos with high ratings/good quality, for example.
+
+Now, we are able to build our Log-Level OLS Regression model.
+
+```{r}
+vreg_t <- lm(log(views) ~ rate, data = videos)
+vreg_t
+```
+
+```{r}
+plot(vreg_t, which = 5)
+```
+
+Here, our Residuals vs Leverage plot is used to identify points that are outliers and have a lot of influence. Points that increase along the x-axis are increasing in leverage, which means that they have the most potential to affect coefficients. Yet, leverage is not necessarily the same thing as influence. We are more concerned with points that have a large Cook's distance. They could be extreme cases against our regression line and can alter the results if we exclude them from analysis. As there are no points that have a large Cook's distance, there are no influencing outliers in our dataset and we do not need to investigate further.
+
+```{r}
+vr.res <- resid(vreg_t)
+videos$residuals <- vr.res
+videos$index <- seq(1,nrow(videos))
+videos$predicted <- predict(vreg_t)
+```
+
+Next, we will do an assessment of all 6 classical linear model (CLM) assumptions on our model.
+
+The goal of our model is to draw meaning from our results which will help us understand how much the video quality (represented by average user rating) affects the number of views. 
+
+```{r}
+ggplot(videos, aes(x=predicted, y=residuals)) + 
+  geom_point() + 
+  geom_hline(yintercept = 0, color = "red") + 
+  geom_smooth(method="loess", se=F) +
+  labs(y="Residual", 
+       x="Fitted", 
+       title="Residual vs Fitted Values")
+```
+
+*Linearity* means that the model relies on variables that have a linear relationship, plus some amount of error. We can confirm linearity through the Residuals vs Fitted plot as there is no apparent pattern amongst the data points. Also, the spline curve is somewhat flat around the zero-line. This means that the model is, indeed, linear.
+
+*Zero conditional mean* means that the value of explanatory variables contains no information about the mean of the unobserved factors. We can also see that the assumption of zero conditional mean is approximately satisfied. The data is roughly centered around the zero-line. The mean does not change drastically from left to right despite there being a greater density of points to the right. So, values are not extremely different for different values of x. Although the spline curve isn't perfectly flat, the major deviations are most likely due to the density of points in that area. 
+
+*Homoskedasticity* indicates that the variance of the error terms is constant. There is approximately a flat band of points for the plot and our error is approximately zero in expectation. There is also a generally uniform thickness of points around the zero-line, despite the larger density of points to the right. This means that the variance of errors is roughly constant, which satisfies the assumption of homoskedasticity.
+
+The explanatory variable values must contain no information about the variability of errors as the thickness of the band of residuals is the same for all x values.
+
+```{r}
+ggplot(videos, aes(x=predicted, y=sqrt(abs(residuals)))) + 
+  geom_point() + 
+  geom_hline(yintercept = 0, color = "red") + 
+  geom_smooth(method="loess", se=F) +
+  labs(y="Residual", 
+       x="Fitted", 
+       title="Scale Location Plot")
+```
+
+In our Scale Location plot, we can see that the band of residuals is approximately horizontal as the spline curve is almost completly flat. Although there are some points that are at a greater distance from the zero-line, most points fall in the optimal range. This reinforces the assumption of homoskedasticity.
+
+```{r}
+bptest(vreg_t)
+```
+
+The Breusch-Pagan test reveals a p-value that is less than alpha = 0.05, meaning that it is statistically significant. So, it is fair to reject the null hypothesis, indicating that there is actually some heteroskedasticity in our model. But, as our sample size is over 9000, there is reason to believe that the significance could be influenced by the large sample size. So, we can also refer back to our explanatory plots to see that homoskedasticity is generally maintained.
+
+However, there are heteroskedasticity-robust standard errors that we can apply to our model to correct for any heteroskedasticity and thus maintain the assumption for CLM.
+
+It is also important to look for multicollinearity in our model. *No perfect collinearity* requires that no independent variables are constant and that there are no exact relationships among them. 
+
+```{r}
+videos_sub <- videos[,c("views","log_views","rate")]
+plot(videos_sub)
+```
+
+Based on this plot matrix, there are no constant independent variables nor obvious exact relationships between any of the variables in our model.
+
+The Condition Number, rather than looking at individual variables, looks at sets of variables. Since collinearity is a function of sets of variables, this is very useful in detecting multicollinearity. A high Condition Number (over 100) means that some of the predictor variables are close to being linear combinations of each other, meaning that there is multicollinearity.
+
+```{r}
+kappa(cor(videos[,c("log_views", "rate")]), exact = TRUE)
+```
+
+Our Conditional Number is very small (substantially less than 100), indicating that there is no multicollinearity in our model.
+
+Furthermore, it is important to check that the *errors are normally distributed*. Although the distribution will be normal for large sample sizes by a version of the Central Limit Theorem, it is still important to check for this in our model. This would indicate that the errors are independent of our x's.
+
+```{r}
+ggplot(videos, aes(residuals)) + 
+  geom_histogram(binwidth = 1, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size=0.01) +  
+  labs(title="Histogram of Residuals",
+       x = "Residuals",
+       y = "Frequency")  
+```
+
+The histogram reveals that the errors of our model are, indeed, normally distributed.
+
+```{r}
+ggplot(videos, aes(sample = residuals)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot",
+       x = "Theoretical Quantiles",
+       y = "Sample Quantiles")
+```
+
+The Q-Q Plot reveals that the data points almost all fall on the diagonal line, meaning that there is further evidence that the residuals follow a normal distribution. Although there is some slight deviation at each end of the diagonal line, the majority of points actually fall on the diagonal, making the plot a good indication of normality.
+
+Lastly, we need to ensure *random sampling* by considering where the data for the model came from. As the data was scraped from YouTube.com, it is fair to conclude that the data was randomly selected.
+
+Therefore, we were able to build a single model specification that satisfies the 6 CLM Assumptions and can help to determine how much the video quality affects the number of views.
+
+#2. Statistical & Practical Significance
+
+Next, we will consider both the statistical and practical significance of our results, which will require other tests besides the standard t-tests for our regression coefficients. So, we will also consider the $R^2$, the adjusted $R^2$, the AIC/BIC scores, and Cohen's $f^2$ values for the model.
+
+The t-test can help us to decide whether there is any significant relationship between x and y by testing the null hypothesis that $\hat\beta$ = 0. It will determine if there is a significant relationship between the variables in the linear regression model at alpha = 0.05 significance level.
+
+Although the t-test will be useful for our analysis, the $R^2$ evaluates the scatter of the data points around the fitted regression line. Generally, higher $R^2$ values represent smaller differences between the observed data and the fitted values. $R^2$ is the percentage of the dependent variable variation that a linear model explains. Usually, the larger the $R^2$, the better the regression model fits your observations. The adjusted $R^2$ is a modified version of $R^2$ that has been adjusted for the number of predictors in the model. The adjusted $R^2$ increases only if the new term improves the model more than would be expected by chance.
+
+In order to figure out which model has the most parsimonious fit, we will use the Akaike Information Criterion (AIC) which actually penalizes the model as the number of variables increases. Essentially, larger AIC values indicate worse fit, and it's also important to note that AIC doesn't describe the quality of the model, but rather the relative fit between models. The BIC also introduces a penalty term for the number of parameters in the model, but the penalty term is larger in BIC than in AIC.
+
+Cohen’s $f^2$, the parameter, is the standard deviation of the population means divided by their
+common standard deviation. Cohen’s $f^2$ method measures the effect size and practical significance of  regression. Cohen's $f^2$ is a measure of a kind of standardized average effect in the population across all the levels of the independent variables. Cohen's $f^2$ can take on values between zero, when the population means are all equal, and an indefinitely large number as standard deviation of means increases relative to the average standard deviation within each group. $f^2$ increases as $R^2$ increases. A small effect size would mean that the results are not very practically significant.
+
+```{r}
+coeftest(vreg_t, vcov = vcovHC)
+```
+
+The t-test results are less than alpha = 0.05, meaning that there is a statistically significant relationship between the variables. However, there are other measures we should consider.
+
+```{r}
+paste("Model (Transformed) R-square: ", summary(vreg_t)$r.square)
+```
+
+This is a small $R^2$ value, which means this model does not explain much of the variation in the response variable around its mean. The mean of the dependent variable predicts the dependent variable as well as the regression model. 
+
+```{r}
+paste("Model (Transformed) Adjusted R-square: ", summary(vreg_t)$adj.r.square)
+```
+
+This adjusted $R^2$ is the same as the regular $R^2$. This means that the model is not necessarily a good fit to the population taking into account the sample size and the number of predictors used.
+
+```{r}
+paste("Model AIC Value: ", AIC(vreg_t))
+```
+
+This is a very large AIC score, futher indicating that this model is not a necessarily a good fit.
+
+```{r}
+paste("Model BIC Value: ", BIC(vreg_t))
+```
+
+The BIC score, although slightly smaller than the AIC score, is still large. This means that the model is, yet again, not necessarily a good fit.
+
+```{r}
+r2 <- summary(vreg_t)$r.square
+f2 <- r2/(1-r2)
+f2
+```
+
+This is a rather small-medium effect size, meaning that the results are not that practically significant either.
+
+```{r}
+(se.model_t = coeftest(vreg_t, vcov = vcovHC)[ , "Std. Error"])
+```
+
+P-values and coefficients in regression analysis work together to tell you which relationships in your model are statistically significant and the nature of those relationships. The coefficients describe the mathematical relationship between each independent variable and the dependent variable. Regression coefficients thus represent the mean change in the response variable for one unit of change in the predictor variable while holding other predictors in the model constant. This statistical control that regression provides is important because it isolates the role of one variable from all of the others in the model. The p-values for the coefficients then indicate whether these relationships are statistically significant.
+
+```{r, warning=FALSE}
+stargazer(vreg_t, type = "text", omit.stat = "f",
+          se = list(se.model_t),
+          star.cutoffs = c(0.05, 0.01, 0.001))
+```
+
+In this model, the equation shows that the coefficient for rate is 0.482. This is a statistically significant coefficient. The coefficient indicates that for every additional unit in rating, you can expect the percent of the number of views to increase by an average of 0.482. 
+
+While statistical significance relates to whether an effect exists, practical significance refers to the magnitude of the effect. Although this model satisfies the CLM assumptions, the results are not very statistically or practically significant. As the model is not very statistically significant, the results alone should not strongly influence conclusions about how much video quality affects the number of views. Additionally, a weak practical significance indicates that the results are not very meaningful in real life either. This means that average video rating alone is not a good indicator for the percentage of video views. So, the model is not totally sufficient in answering how much the video quality affects the number of views. These results must be an outcome of omitted-variable bias, especially because we rely on only one variable as a proxy indicator of video quality.
+
+#3. Omitted Variable Bias 
+
+In statistics, omitted-variable bias occurs when a statistical model leaves out one or more relevant variables. The bias results in the model attributing the effect of the missing variables to the estimated effects of the included variables.
+
+Note that a bias towards zero implies that the model depicts that the variable, if added to the model, is not statistically significant as an indicator of video views. In contrast, a bias away from zero implies that our model depicts that the variable could be a statistically significant effect on the number of views. These biases can also be more/less positive or negative in magnitude with reference to the model above, depending on how the variable corresponds to video quality.
+
+For instance, there were other variables in the dataframe that could have been included in the model as they would also be a good representation of video quality and, thus, influence the number of views.
+
+* Category - A certain video category might be more popular than others. The more popular categories generally earn more money from ads/etc. that allow for greater production and content quality. That video would then recieve more views and higher ratings, partially due to the category that it belongs to. So, it is fair to believe that category, as an additional proxy for quality, would serve as a good indicator of number of views in our model. 
+
+    + As a more popular category is assumed to generate more views, I estimate that this variable would have a more positive bias away from zero.
+
+This can even be confirmed by adding an indicator variable for the most popular category into the model and comparing the results.
+
+```{r}
+g <- ggplot(videos, aes(category, rate))
+g + geom_boxplot(varwidth=T, fill="plum") + 
+  theme(legend.position="none",
+        axis.text.x = element_text(angle = 75, hjust = 1)) +
+  labs(title="Distribution of Avg. Ratings by Category", 
+       x="Category",
+       y="Average Rating")
+```
+
+The box plot shows that music has a large density of consistently high ratings, with some outlying points. So, we can make music an indicator variable for category and add that to the model.
+
+```{r}
+videos$music <- ifelse(videos$category == "Music", 1, 0)
+```
+
+```{r}
+vreg_m <- lm(log(views) ~ rate + music, data = videos)
+vreg_m
+```
+
+Now, we can compare the models and see which one provides the best parsimonious fit of the data.
+
+```{r}
+anova(vreg_t, vreg_m)
+```
+
+As one can see, the result shows a Df of 1 (indicating that the more complex model has one additional parameter), and a very small p-value (< .001). This means that adding the music category to the model did lead to a significantly improved fit over the original model.
+
+There are also variables outside of the dataset that could contribute to omitted-variable bias. These variables would also be a good representation of video quality and, thus, influence the number of views.
+
+* Video Completion - A good video is often watched for the full duration of the video. In contrast, it is common for people to stop watching videos midway through if they do not like it. So, video completion would be a good proxy indicator of video quality and its affect on the number of video views. This could be accomplished by creating a ratio of the amount of time the video was actually watched divided by the length of the entire video. However, this would then favor videos with shorter lengths, because people can still finish watching a poor quality video if, for instance, it is only 30 seconds. As a result, there should be some kind of weight to balance some of the difference between short and long videos. A higher ratio would indiacte the video was liked, meaning it was of good quality. This would then mean that the number of views would go up. Whereas a small ratio would indicate that the video was not liked and of poor qulity. So, the video would be likely to recieve less views.
+
+    + As a higher ratio of video completion is assumed to impact the amount of views, we estimate that this variable would have a more positive bias away from zero.
+
+\n
+
+* The Number of Shares - A video that is well-liked will often be shared on other social media platforms. Other people are then more likely to view the video. If they see a shared link, it is most likely by a friend of theirs, which means they have similar interests in common. So, if the person who shared the video liked it, it is fair to assume that those they shared it with will also like the video. As a result, a frequentily shared video can be another proxy variable for the video quality and, thus, serve as an indicator for how much the video quality impacts the number of views.
+
+    + The more "sharable" a video is, the more likely it is to generate more views. Therefore, we estimate that this variable would have a more positive bias away from zero.
+
+The effects of these omitted variables (category, ratio of video completion, and the number of shares) are believed to be real. The omitted variables are all tied closely to the dependent variable. From real life experiences, these are the variables one would care about in a practical sense in estimating associations and causations of video quality and the amount of views a video recieves.
+
+
+
+
