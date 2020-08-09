@@ -1,0 +1,677 @@
+---
+title: "W203 Lab 2"
+author: "Section 6"
+subtitle: Erin Werner & Hsuanyi Cheng
+output:
+  word_document: default
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+library(ggplot2)
+library(lsr)
+```
+
+```{r}
+A <- read.csv("~/Downloads/lab_2-master/anes_pilot_2018.csv")
+```
+
+```{r}
+nrow(A)
+```
+
+
+
+
+
+#Question 1: Do US voters have more respect for the police or for journalists?
+```{r}
+A <- read.csv("~/Downloads/lab_2-master/anes_pilot_2018.csv")
+```
+In this research question, we will focus on comparing an individual’s rating for both the police and journalists. The rating range is from 0 to 100 on a sentiment thermometer. This means that the higher the “temperature” score, the warmer (more favorable) feeling that the person has towards police or journalists respectively. The higher the score indicates a higher respect for that group, in the context of this research question. The survey asks the individual for their separate ratings for both the police and journalists on this scale. The goal of our analysis is to determine whether or not US voters have more respect for police or more respect for journalists.
+
+```{r}
+summary(A$ftpolice)
+summary(A$ftjournal)
+```
+In general, because there is a wide range of possible scores in this system (100 different potential values) for both the rating of police and journalists, it will be difficult to differentiate between various ratings that are close together in value, yet arbitrarily different. For example, Person A may rate the police a score of 55 and journalists a score of 60 while Person B rates the police 30 and journalists 35. The difference between the peoples scores are the same (5 points), but overall Person B rates both the police and journalists lower than Person A. It is hard to measure exactly what this difference means in relation to that person's respect toward police or journalists. Additionally, Person C may rate the police 55 and Person D may rate the police 57, yet it is difficult to gauge the true difference in sentiment towards the police between these two individuals, as 55 to 57 is not a large difference but still present a slightly different respect level for the police.
+
+```{r}
+A <- A[which(A$ftjournal >= 0),]
+summary(A$ftpolice)
+summary(A$ftjournal)
+nrow(A)
+```
+After looking at the summary of the data, it is apparent that some data points have invalid values for the journalist rating. These values are represented by negative numbers that indicate which type of invalid input the individual responded with. In this survey, '-7' represents a non-response, meaning that the rating was “null” for that individual. The appropriate values will be only from 0-100, so all individuals that rated both police and journalists provided a sample about the general population's respect towards both groups. Therefore, we ignored those data points and only considered the data points that had a valid value for both groups, thus reflecting that individual's sentiment towards both police and journalists. This resulted in the removal of just two points, making our sample size 2498, which is still a reasonably large sample.
+
+```{r}
+j <- ggplot(A, aes(x=ftpolice, y=ftjournal)) 
+j + geom_point(fill="gray") + 
+    geom_smooth(method="loess", se=F) + 
+    labs(title="Police Vs Journalists", 
+       y="Feeling Toward Journalists", 
+       x="Feeling Toward Police")
+```
+It is clear that there is not a linear relationship between the two variables. Yet, it is also fair to say that the values are independently and identically distributed (iid). These observations indicate that we will want to implement a non-parametric test for our variables.
+
+```{r}
+pj_vals <- c(A$ftpolice, A$ftjournal)
+categories <- c(rep("Police", nrow(A)), rep("Journalist", nrow(A)))
+
+PJ <- data.frame(pj_vals, categories)
+```
+
+```{r}
+g <- ggplot(PJ, aes(categories, pj_vals))
+g + geom_boxplot(varwidth=T, fill="plum") + 
+    theme(legend.position="none") +
+    labs(title="Sentiment on Police and Journalists", 
+         x="Journalist vs Police",
+         y="Rating")
+```
+The boxplot reveals that police generally maintain higher ratings than journalists amongst US voters.
+
+```{r}
+g <- ggplot(PJ, aes(pj_vals))
+g + geom_density(aes(fill=factor(categories)), alpha=0.8) + 
+    labs(title="Police and Journalist Ratings",
+         x="Rating",
+         fill="Police Vs Journalists")
+```
+In the density plot, we can also observe slightly higher ratings of police compared to journalist's rating, but it is uncertain as to how significant this difference is yet.
+
+It is clear that two groups of ratings are paired. To compare voter respect toward those two groups, the ratings need to be paired in relation to the individual that rated each group. That allows us to determine whether a sample of voters has more respect for the police or for journalists. So, the optimal test to implement would be the Wilcoxon signed rank test.
+
+One of the assumptions of the Wilcoxon signed rank test is that the difference of pairs is roughly symmetric with respect to mu.
+```{r}
+A$pj_diff <- A$ftpolice - A$ftjournal
+```
+
+```{r}
+ggplot(A, aes(pj_diff)) + 
+  geom_histogram(binwidth = 10, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size=0.1) +  
+  labs(title="Difference Between Police and Journalist Rating",
+       x = "Difference",
+       y = "Count")  
+```
+It is clear from this histogram that the symmetric differences are approximately maintained.
+
+As a result, we decided to use a non-parametric two-sided Wilcoxon signed rank test for this question, so that we can utilize the ordinal variables and don’t need to assume the normality of data. All the assumptions for the test are held as the variables use an interval scale, are iid, and the difference of pairs roughly follows a symmetric distribution with respect to mu. The test is two-sided as that is more conservative and the direction of the question is not clear enough to justify a one-sided test. Additionally, there is dependence between the police and journalist ratings, making the signed rank test ideal. This test will indicate whether one group ranks above or below another group.
+
+For our research question as to whether US voters have more respect for police or for journalists, the null hypothesis is that we assume voters have the same respect for both police and journalists. As this is a two-sided signed rank test, the alternative hypotheses is that the respect towards the police and journalists are not equal.
+
+```{r}
+wilcox.test(A$ftpolice, A$ftjournal, paired = T)
+```
+According to the Wilcoxon signed rank test result, the p-value is significantly smaller than alpha = 0.05. Therefore, it is fair to reject the null hypothesis. So, we can assume that the respect for both the police and journalists are not equivalent. 
+
+In order to determine which group receives more respect from voters, we can look at the trends from the box plot and density plot. Each plot indicates that US voters have slightly more respect for the police compared to journalists.
+
+The effect size indicates why we should care about the results of our statistical test, as it does not depend on the sample size. This represents our practical significance. The result, r, is related to the probability that one group is larger than the other, or if you'd rather, that the differences are consistently greater than zero.
+```{r}
+model1 <- wilcox.test(A$ftpolice, A$ftjournal, paired = T)
+z <- qnorm(model1$p.value/2)
+r <- z/sqrt(nrow(A))
+cat("Effect Size, r = ",abs(r))
+```
+This is a small to medium effect size. So, there is a reasonable overlap between the two distributions. This means that although our results are very statistically significant, the results are not as practically significant.
+
+So, in conclusion, it is fair to reject the null hypothesis by using the Wilcoxon signed rank test, which indicates that US voters have somewhat more respect for the police compared to journalists.
+
+
+
+
+
+#Question 2: Are Republican voters older or younger than Democratic voters?
+```{r}
+A <- read.csv("~/Downloads/lab_2-master/anes_pilot_2018.csv")
+```
+In this research question, we will focus on comparing the age of voters that identify as either Republican or Democrat. The survey targeted U.S citizens aged 18 or older and only asked for the individual's birth year. Therefore, we used 2018, the year the survey took place, minus the individual’s birth year to get the exact age of the person as our new variable. The age range is then from 18 to 91. We also need to determine what party that individual self-identifies as. The survey asks the individual for their separate responses for both age and party. The goal of our analysis is to determine whether or not Rebublican voters are older than Democratic voters.
+
+```{r}
+summary(A$birthyr)
+
+A$age <- 2018 - A$birthyr
+summary(A$age)
+```
+Overall, the majority of voters are under 80 and voter counts decline after 60 years old. 
+
+```{r}
+summary(A$pid1d)
+sort(unique(A$pid1d))
+
+summary(A$pid1r)
+sort(unique(A$pid1r))
+```
+After looking at the summary of the data, it is apparent that some data points have invalid values for party identification. These values are represented by negative numbers that indicate which type of invalid input the individual responded with. In this survey, '-7' represents a non-response, meaning that the rating was “null” for that individual, and '-1' means that it is not applicable. The appropriate values will be only from 1-4, so all individuals that responded with a valid answer provided a sample about the general population's political orientation. Therefore, we ignored those data points and only considered the data points that had a valid value for both age and party, thus reflecting that party's general age distribution. This resulted in the subset of parties, making our sample size smaller but still reasonably large.
+
+The only difference between the two party-identification variables is the way the question was asked. One asked "do you usually think of yourself as a Democrat, a Republican ...", the other asked "do you usually think of yourself as a Republican, a Democrat ...".
+
+```{r}
+dems <- A[which(A$pid1d == 1 | A$pid1r == 1),]
+nrow(dems)
+```
+The value of '1' represents Democrat. So, we have a subset of 857 people that identify as Democrats.
+
+```{r}
+reps <- A[which(A$pid1d == 2 | A$pid1r == 2),]
+nrow(reps)
+```
+The value of '2' represents Republican. We also have a subset of 609 people that are Republicans.
+
+```{r}
+indep <- A[which(A$pid1d == 3 | A$pid1r == 3),]
+nrow(indep)
+```
+A value of '3' represents Independent and '4' means that the individual is not sure. We are only focused on Republicans and Democrats, so we can ignore the independent voters that do not lean towards one of those parties.
+
+```{r}
+both <- rbind(dems, reps, indep)
+nrow(unique(both))
+```
+Yet, there are still some people that did not identify initially with a party, but disclose that they lean towards one side or the other.
+
+```{r}
+summary(A$pidlean)
+sort(unique(A$pidlean))
+```
+Here, '1' shows Republican leaning, '2' shows Democratic leaning, and '3' shows neither. We want to add those that lean either Republican or Democrat to our sample.
+
+```{r}
+other <- A[which((A$pid1d == 4 | A$pid1r == 4) 
+                 | (A$pid1d == -7 | A$pid1r == -7)),]
+nrow(other)
+```
+
+```{r}
+more_rep <- other[which(other$pidlean == 1),]
+nrow(more_rep)
+more_dem <- other[which(other$pidlean == 2),]
+nrow(more_dem)
+more_x <- other[which(other$pidlean == 3),]
+nrow(more_x)
+```
+We can now add the data points that lean towards Republican/Democrat to the sample. This is important as the general population behaves in a similar manner, as not all people identify with a party but have a political leaning. So, these samples need to include political leanings too in order to reflect this behavior and provide a better overall representation.
+
+Furthermore, each data point is independent of the other observations. In this context, age is the dependent variable. One person's age cannot be influenced by another person's age. So, it is fair to say that the data is independently and identically distributed (iid).
+
+```{r}
+reps <- rbind(reps, more_rep)
+nrow(reps)
+dems <- rbind(dems, more_dem)
+nrow(dems)
+```
+Now, we have 639 Republicans and 884 Democrats, both of which are reasonably large sample sizes according to the Central Limit Theorem.
+
+```{r}
+reps$party <- "Republican"
+dems$party <- "Democrat"
+```
+
+```{r}
+A2 <- rbind(reps,dems)
+```
+
+```{r}
+summary(A2$age)
+```
+
+```{r}
+g <- ggplot(A2, aes(age))
+g + geom_histogram(aes(fill=party), bins = 5, col = "gray") + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Histogram of Voter Age",
+       x = "Age", y = "Count", fill = "Party") 
+```
+Here, we can see that the age data roughly follows a normal curve. We can also see that the majority of voters' ages are between 35 to 60.
+
+```{r}
+g <- ggplot(A2, aes(age))
+g + geom_density(aes(fill=party), alpha = 0.8) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Density Plot of Voter Age",
+       x = "Age", y = "Count", fill = "Party") 
+```
+We can also observe that Republicans tend to be older than Democrats, but it is uncertain as to how significant this difference is yet. Furthermore, the total number of voters is different in each party, so we are unable to tell which party truly has younger or older voters.
+
+```{r}
+reg <- lm(age ~ party, data = A2)
+a.res <- resid(reg)
+A2$residuals <- a.res
+A2$index <- c(1:nrow(A2))
+```
+
+```{r}
+ggplot(A2, aes(sample = a.res)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot",
+       x = "Theoretical Quantiles",
+       y = "Sample Quantiles")
+```
+The Q-Q Plot does not completely follow the normal line. Yet, the differences are small enough to conclude that the normality assumption of the variability of points around the least squares line is roughly followed.
+
+As a result, we choose a parametric, independent t-test for this question, as our goal is to compare the mean age of Republicans and Democrats. Our data holds all the assumptions of a t-test as the data is iid and follows a normal distribution. The test is two-sided as that is more conservative and the direction of the question is not clear enough to justify a one-sided test. This test will indicate whether one party's age is older or younger than the other party. We want to determine if there is a significant difference between the two sample means while accounting for variability. 
+
+For our research question as to whether Republican voters are older or younger than Democrats, the null hypothesis is that we assume voters in each party have the same average age, so Republicans are neither older or younger. As this is a two-sided t-test, the alternative hypothesis is that the average age of each party is not equal.
+
+```{r}
+t.test(dems$age, reps$age)
+```
+According to the t-test result, the p-value is smaller than alpha = 0.05. Therefore, it is fair to reject the null hypothesis. So, we can assume that the average age for each party is not equivalent. 
+
+In order to determine which party is older than the other, we can look at the trends from the histogram and density plot. Each plot indicates that Rebublican voters tend to be older compared to Democratic voters.
+
+The effect size indicates why we should care about the results of our statistical test, as it does not depend on the sample size. This represents our practical significance. The result, r, is related to the probability that one group is larger than the other. For our independent t-test, we choose to use a Cohen's D effect size measure as it standardizes our units.
+
+```{r}
+cohensD(dems$age, reps$age)
+```
+This is a small effect size. So, there is a reasonable overlap between the two distributions. This means that although our results are statistically significant, the results are not as practically significant.
+
+So, in conclusion, it is fair to reject the null hypothesis by using the independent two-sided t-test, which indicates that Republican voters are somewhat older than Democratic voters.
+
+
+
+
+
+#Question 3: Do a majority of independent voters believe that the federal investigations of Russian election interference are baseless?
+```{r}
+A <- read.csv("~/Downloads/lab_2-master/anes_pilot_2018.csv")
+```
+In this research question, we will focus on whether or not independent voters believe that the Mueller investigations were justifiable. There are three different variables to focus on that relate to the general sentiment toward the investigation itself, as well as their beliefs about Russian coordination in the election. One addresses whether the individual thinks the Russian government possibly interfered in the 2016 presidential election, the second one reflects approval/disapproval of Robert Mueller's investigation. The third one addresses whether they believed Donald Trump’s 2016 campaign probably coordinated with the Russian government. In this question, we want to take party bias out of the equation, and only consider Independent voter's opinions.
+
+All three variables are ordinal. The variables for Russian interference and coordination are '1' for coordinated/intereferred and '2' for no coordination/interference. The scale for the investigation is from 1~7, where '1' strongly approves of the investigation, '4' is neutral, and '7' strongly disapproves of the investigation. So, values of 5~7 believe that the investigation is baseless in this context. The survey asks the individual for their separate ratings for all three events. The goal of our analysis is to determine whether or not independent voters believe that the investigations were baseless.
+
+```{r}
+indep <- A[which(A$pid1d == 3 | A$pid1r == 3),]
+nrow(indep)
+```
+First, we need to focus on the independent voters of the sample.
+
+```{r}
+summary(indep$russia16)
+unique(indep$russia16)
+
+summary(indep$muellerinv)
+sort(unique(indep$muellerinv))
+
+summary(indep$coord16)
+unique(indep$coord16)
+```
+As, the range for the Mueller investigation is from 1 to 7, scores of 1~3 indicate a favorable rating in regard to the investigation, in great favor towards it scaled to a little favor towards it. A score of 4 is neither in favor nor against. Then a score of 5~7 is slightly opposed to strongly opposed. It is hard to differentiate what the difference between a 2 and 3 or a 5 and 6 is as those values arbitrarily describe the strength of their sentiment, but it is still valid to say that those scores constitute approval or disapproval respectively.
+
+There are not any major outliers among the independent voters' ratings on the investigation, coordination, or interference, so no values need to be omitted.
+
+```{r}
+print(paste0("# Indep. Approve of investogation: ", nrow(indep[which(indep$muellerinv < 4),])))
+
+print(paste0("# Indep. Neutral to investogation: ", nrow(indep[which(indep$muellerinv == 4),])))
+
+print(paste0("# Indep. Dissaprove of investogation: ", nrow(indep[which(indep$muellerinv > 4),])))
+```
+
+```{r}
+indep$rus16yn <- ifelse(indep$russia16==1, "Interfered","Not") 
+indep$coord16yn <- ifelse(indep$coord16==1, "Coordinated","Not") 
+```
+
+```{r}
+pie <- ggplot(indep, aes(x = "", fill = factor(rus16yn))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="Russian Interference", 
+       x=NULL, 
+       y=NULL, 
+       title="Indep. Voter thoughts on Russian Interference")
+pie + coord_polar(theta = "y", start=0)
+```
+More independent voters appear to believe that there was, in fact, Russian interference in the 2016 presidential election.
+
+```{r}
+pie <- ggplot(indep, aes(x = "", fill = factor(coord16yn))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="Russian Coordination", 
+       x=NULL, 
+       y=NULL, 
+       title="Indep. Voter thoughts on Russian Coordination")
+pie + coord_polar(theta = "y", start=0)
+```
+A slight majority of independent voters believe that there was Russian coordination in Trump's 2016 presidential campaign.
+
+```{r}
+a <- ggplot(indep, aes(muellerinv)) 
+a + geom_histogram(fill="mediumturquoise",
+                binwidth = 1, 
+                col="black", 
+                size=0.1) + 
+                labs(title="Approval/Disapproval of Mueller Investivation",
+                     x="Approval/Disapproval (1-7)",
+                     y="Count") 
+```
+A general majority of independent voters approve of the investigation compared to the amount that disapprove. People also tend to have more definitive positions on this issue, as there are peaks at the 'neutral' and 'strongly' approve/disapprove scores; people generally don't score their view as moderate or slight. However, the histogram does show that the values are independently and identically distributed (iid) and well as roughly symmetric around the mean value of 4.
+
+```{r}
+A$indep_party <- ifelse(A$pid1d == 3 | A$pid1r == 3, "Indep", "Other")
+
+A <- A[which(A$muellerinv >= 0),]
+
+reg <- lm(muellerinv ~ indep_party, data = A)
+```
+
+```{r}
+g <- ggplot(A, aes(indep_party, muellerinv))
+g + geom_boxplot(varwidth=T, fill="plum") + 
+    ylim(1,7) +
+    geom_hline(yintercept = 4, color = "red", linetype = "dashed") +
+    geom_text(aes(y=4.3,label = "Neutral", col = "red", x=0.5)) +
+    theme(legend.position="none") +
+    labs(title="Sentiment on Mueller Investigation", 
+         x="Independent Party vs Other",
+         y="Mueller Investigation Rating")
+```
+The box plot reinforces the notion that independent voters tend to approve of the investigation and there is a greater density of values under the "Neutral" line. Additionally, the independent voters are somewhat similar in their views to the rest of the sample.
+
+```{r}
+m.res <- resid(reg)
+A$residuals <- m.res
+A$index <- c(1:nrow(A))
+```
+
+```{r}
+ggplot(A, aes(sample = m.res)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot",
+       x = "Theoretical Quantiles",
+       y = "Sample Quantiles")
+```
+The Q-Q plot shows that the Muellerinv data does not necessarily fit the linear regression line well. So, a linear model should not be used in our statistical test.
+
+As a result, we decided to use a non-parametric one-sample two-sided Wilcoxon signed rank test for this question, so that we can utilize the ordinal variable and don’t need to assume the normality of data. All the assumptions for the test are held as the variable uses an interval scale, the data is iid, and the values roughly follow a symmetric distribution with respect to mu = 4. The test is two-sided as that is more conservative and the direction of the question is not clear enough to justify a one-sided test. This test will indicate whether the approval group ranks above or below the disapproval group.
+
+The null hypothesis is that independent voters have no opinion on whether or not the Russian interference investigations were baseless. This is a two-sided test, so the alternative hypothesis is that independent voters are not neutral on this issue and, thus, either approve or disapprove of the investigation.
+
+```{r}
+wilcox.test(indep$muellerinv, mu = 4)
+```
+According to the test result, the p-value is much smaller than alpha = 0.05. So, it is fair to reject the null hypothesis. We can also refer to previous boxplot and histogram to determine which side of the issue that the independent voters are on. The plots then indicate that the majority of independent voters approve of the Mueller investigation, meaning that they do not think the investigations were baseless.
+
+The effect size indicates why we should care about the results of our statistical test, as it does not depend on the sample size. This represents our practical significance. The result, r, is related to the probability that one group (approval) is larger than the other (disapproval).
+
+```{r}
+model3 <- wilcox.test(indep$muellerinv, mu = 4)
+z <- qnorm(model3$p.value/2)
+r <- z/sqrt(nrow(indep))
+cat("Effect Size, r = ",abs(r))
+```
+This is a small effect size. So, there is a reasonable overlap between the two distributions. This means that although our results are very statistically significant, the results are not as practically significant.
+
+So, in conclusion, it is fair to reject the null hypothesis by using the one-sample Wilcoxon signed rank test, which indicates that a majority of independent voters somewhat believe that the federal investigations of Russian election interference were not baseless.
+
+
+
+
+
+#Question 4: Was anger or fear more effective at driving increases in voter turnout from 2016 to 2018?
+```{r}
+A <- read.csv("~/Downloads/lab_2-master/anes_pilot_2018.csv")
+```
+In this research question, we will focus on comparing an individual’s rating for their personal motivation to vote. The two motivations that we will focus on are fear and anger. Both variables use an ordinal scale to rate their fear or anger in relation to how they feel about how things are going in the country these days. Their sentiment is measured on a 1 to 5 scale. A score of '1' indicates that the individual does not feel that way at all and '5' means they feel that way, extremely so. The strength of their feeling increases from 1~5. This means that the higher the score, the more they feel angry/afraid. This then acts as their personal motivation to vote. The survey asks the individual for their separate ratings for both the anger and fear on this scale. The goal of our analysis is to determine whether or not fear or anger was more effective at driving an increase in voter turnout from 2016 to 2018.
+
+In order to determine if voter turnout increased in the first place, it is important to look at the turnout rates in both 2016 and 2018.
+
+```{r}
+summary(A$turnout18)
+summary(A$turnout16)
+```
+
+```{r}
+A$to18 <- ifelse(A$turnout18 == 1 | A$turnout18 == 2 | A$turnout18 == 3, 1, 
+                 ifelse(A$turnout18 == 4, 2, 3))
+```
+The two turnout variables use different scales to represent whether or not the individual voted, so we standardized the answers to rely on the same measures. So now, '1' means that the person voted, '2' means that they did not, and '3' means that the individual is not sure.
+
+```{r}
+turnout <- c(A$turnout16, A$to18)
+categories <- c(rep("2016 Turnout", nrow(A)), rep("2018 Turnout", nrow(A)))
+
+ATO <- as.data.frame(cbind(turnout,categories))
+ATO$voted <- ifelse(ATO$turnout == 1, "Voted", 
+                    ifelse(ATO$turnout == 2, "Did Not Vote", "Not Sure"))
+```
+
+```{r}
+g <- ggplot(ATO[which(ATO$turnout != 3),], aes(voted))
+g + geom_bar(aes(fill=categories), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Voter Status (2016 vs 2018)", y = "Count",
+       fill="Turnout Year", x = "Vote Status") 
+```
+Here, we can see that a majority of the sample voted in both the 2016 and 2018 election. But, we are focused on what causes an increase in turnout.
+
+```{r}
+g <- ggplot(ATO[which(ATO$turnout == 1),], aes(categories))
+g + geom_bar(fill = "mediumturquoise", width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Voter Turnout (2016 vs 2018)", y = "Count",
+       x = "Year") 
+```
+So, we can see that turnout rates are very close in both years. As a result, we need to focus on the sample of people that did not vote in 2016, but did vote in 2018. Those people can demonstrate whether fear or anger was more effective as a form of motivation to vote. 
+
+Next, we assess the voter ratings in relation to fear and anger.
+
+```{r}
+summary(A$geangry)
+sort(unique(A$geangry))
+summary(A$geafraid)
+sort(unique(A$geafraid))
+```
+Once again, '-7' is a non-response.
+
+```{r}
+feeling <- c(A$geangry, A$geafraid)
+categories <- c(rep("Angry", nrow(A)), rep("Afraid", nrow(A)))
+
+AF <- as.data.frame(cbind(feeling,categories))
+```
+
+```{r}
+g <- ggplot(AF[which(AF$feeling != -7),], aes(feeling))
+g + geom_bar(aes(fill=categories), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Voter Sentiment", y = "Count",
+       fill="Feeling", x = "Sentiment Strength: None -> Extreme (1-5)") 
+```
+The stacked bar plot reveals that sentiments tend to be less extreme but quite proportional between both anger and fear amongst the entire sample.
+
+But, we need to focus on the sentiments of the subset that caused an increase in voter turnout and rated both fear and anger.
+
+```{r}
+Avt <- A[which(A$turnout16 > 1),]
+Avt <- Avt[which(Avt$to18 == 1),]
+nrow(Avt)
+```
+
+```{r}
+Avt <- Avt[which(Avt$geangry > 0),]
+Avt <- Avt[which(Avt$geafraid > 0),]
+nrow(Avt)
+```
+This reduces our sample size to 113, but that is still a reasonable size according to the Central Limit Theorem.
+
+```{r}
+feeling <- c(Avt$geangry, Avt$geafraid)
+categories <- c(rep("Angry", nrow(Avt)), rep("Afraid", nrow(Avt)))
+
+AFvt <- as.data.frame(cbind(feeling,categories))
+```
+
+```{r}
+g <- ggplot(AFvt[which(AFvt$feeling != -7),], aes(feeling))
+g + geom_bar(aes(fill=categories), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="New Voter Sentiment", y = "Count",
+       fill="Feeling", x = "Sentiment Strength: None -> Extreme (1-5)") 
+```
+We can see a substantial difference between the two stacked bar charts now. Here, the proportions between fear and anger are still somewhat balanced, but the strength of their sentiments are different. More people feel 'somewhat' angry/afraid. Yet, there is still a trend towards less extreme feelings.
+
+These observations indicate that we will want to implement a non-parametric test for our variables. It is clear that two groups of feeling-ratings are paired. To compare voter turnout as a result of anger or fear, the ratings need to be paired in relation to the individual that rated both feelings. That allows us to determine whether voter turnout actually increased as a result of either fear or anger. So, the optimal test to implement would be the Wilcoxon signed rank test.
+
+One of the assumptions of the Wilcoxon signed rank test is that the difference of pairs is roughly symmetric with respect to mu.
+
+```{r}
+Avt$aa_diff <- Avt$geangry - Avt$geafraid
+```
+
+```{r}
+ggplot(Avt, aes(aa_diff)) + 
+  geom_histogram(binwidth = 1, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size=0.1) +  
+  labs(title="Difference Between Anger and Fear Rating",
+       x = "Difference",
+       y = "Count")  
+```
+The histogram shows that the difference of pairs has a roughly symmetric distribution around 0.
+
+```{r}
+j <- ggplot(Avt, aes(x=geangry, y=geafraid)) 
+j + geom_point(fill="gray") + 
+    geom_smooth(method="loess", se=F) + 
+    labs(title="Anger Vs Fear as Voter Motivation", 
+       y="Anger", 
+       x="Fear")
+```
+The scatter plot demonstrates that the values are independently and identically distributed (iid). 
+
+As a result, we decided to use a non-parametric two-sided Wilcoxon signed rank test for this question, so that we can utilize the ordinal variables and don’t need to assume the normality of data. All the assumptions for the test are held as the variables use an interval scale, are iid, and the difference of pairs roughly follows a symmetric distribution with respect to mu. The test is two-sided as that is more conservative and the direction of the question is not clear enough to justify a one-sided test. Additionally, there is dependence between anger and fear ratings, making the signed rank test ideal. This test will indicate whether one group ranks above or below another group.
+
+For our research question as to whether increased voter turnout was motivated by fear or anger, the null hypothesis is that we assume voters have the same feeling of both anger and fear. As this is a two-sided signed rank test, the alternative hypotheses is that the feeling of anger and fear are different.
+
+```{r}
+wilcox.test(Avt$geangry, Avt$geafraid, paired = T)
+```
+According to the Wilcoxon signed rank test result, the p-value is not smaller than alpha = 0.05. Therefore, we will not reject the null hypothesis. So, there is not a statistically significant difference between anger or fear as a motivation for increasing voter turnout. 
+
+The effect size indicates why we should care about our statistical results, as it does not depend on the sample size. This represents our practical significance. The result, r, is related to the probability that one group is larger than the other, or if you'd rather, that the differences are consistently greater than zero.
+
+```{r}
+model4 <- wilcox.test(Avt$geangry, Avt$geafraid, paired = T)
+z <- qnorm(model4$p.value/2)
+r <- z/sqrt(nrow(Avt))
+cat("Effect Size, r = ",abs(r))
+```
+This is a very small effect size. So, there is a substantial overlap between the two distributions. This means that the results are not very practically significant.
+
+So, in conclusion, we do not reject the null hypothesis by using the Wilcoxon signed rank test, which indicates that fear was no more effective than anger at motivating an increase in voter turnout from 2016 to 2018.
+
+
+
+
+
+#Question 5: Do a majority of independent voters support teachers carrying a weapon in school?
+
+Allowing teachers to carry guns in schools as a form of protection against school-shooters is a recent polarizing topic in the US today. Many voters are split on this issue. People against teachers with guns believe that the teachers are not trained for handling weapons, nor should they be, and that it would actually make schools less safe. Whereas people that support it believe that guns will act as a method of defense. Often, voters follow party lines on issues related to guns. So, it is reasonable to believe that this question would impact voting behavior, and, more interestingly, impact independent voters that do not have a party line to tow. 
+
+```{r}
+A <- read.csv("~/Downloads/lab_2-master/anes_pilot_2018.csv")
+```
+So, in this research question, we want to know how the majority of independent voters feel about teachers carrying guns in schools. The variable that measures if an independent voter supports or allows teachers to carry guns to school is ordinal, with seven different values from 1~7. In this context, a score of '1' means that the individual is totally in favor and agrees with allowing teachers to carry guns, where a score of '7' means that the individual strongly disagrees with it. A score of '4' means that the individual is neutral in their position on this question.
+
+```{r}
+Demo <- A[which(A$pid1d == 1 | A$pid1r == 1),]
+Repu <- A[which(A$pid1d == 2 | A$pid1r == 2),]
+
+par(mfrow = c(2,1))
+par(mar=c(0,5,3,3))
+hist(Demo$gunteach, main = "Approval of Teachers with Weapons in Schools", ylab = "Democrat", 
+     xlim = c(1,7), ylim = c(0,300), xaxt = "n", col = "blue4")
+par(mar=c(5,5,0,3))
+hist(Repu$gunteach, main="", ylab = "Republican", xlab = "Approval/Disapproval (1-7)",
+     xlim = c(1,7), ylim = c(300,0), col="red3")
+
+```
+First, we want to look at the Democratic and Republican opinions on the issue of allowing teachers to carry guns in schools. We can see that Republicans tend to strongly support teachers carrying weapons in schools and Democrats are strongly opposed, reinforcing the notion that voters that identify with a certain party will vote along those political values.
+
+There are two variables that represent the individual's self-identified party preference. A response of '3' for both of these variables shows whether the individual is considered to be an Independent voter.
+
+```{r}
+indep <- A[which(A$pid1d == 3 | A$pid1r == 3),]
+nrow(indep)
+```
+First, we select only the self-identified independent voters. This results in a sample size of 767 independent voters.
+
+Then, we took a closer look at how those independent voter's rated the question on allowing teachers to carry guns in schools.
+
+```{r}
+summary(indep$gunteach)
+sort(unique(indep$gunteach))
+```
+As, the range is from 1~7, scores of 1~3 indicate a favorable rating in regard to the idea, in great favor towards guns scaled to a little favor towards guns. A score of '4' is neither in favor nor against. Then a score of 5~7 is slightly opposed to strongly opposed. It is hard to differentiate what the difference between a '2' and '3' or a '5' and '6' is as those values arbitrarily describe the strength of their sentiment, but it is still valid to say that those scores constitute approval or disapproval respectively.
+
+There are not any major outliers among the independent voters' ratings on guns in schools, so no values need to be omitted.
+
+```{r}
+g <- ggplot(indep, aes(gunteach)) 
+g + geom_histogram(fill="mediumturquoise",
+                binwidth = 1, 
+                col="black", 
+                size=0.1) + 
+                labs(title="Indep. Support of Teachers with Guns in Schools",
+                     x="Approval/Disapproval (1-7)",
+                     y="Count") 
+```
+In the explanatory plot, we observed that a large amount of independent voters strongly disapprove of teachers carrying guns in school, as represented with the score of '7'. A '7' score has a higher count compared to little or moderate disapproval, in addition to a general higher count compared to approving scores. However, the distribution is more evenly distributed on the approval side of scale. Furthermore, there is a decent number of independent voters that neither approve or disapprove. Overall, it looks like disapproval rating has a slightly higher number of independent voters.
+
+The histogram also shows that the values are independently and identically distributed (iid) and well as roughly symmetric around the mean value of 4.
+
+```{r}
+A$indep_party <- ifelse(A$pid1d == 3 | A$pid1r == 3, "Indep", "Other")
+```
+
+```{r}
+g <- ggplot(A, aes(indep_party, gunteach))
+g + geom_boxplot(varwidth=T, fill="plum") + 
+    ylim(1,7) +
+    geom_hline(yintercept = 4, color = "red", linetype = "dashed") +
+    geom_text(aes(y=4.3,label = "Neutral", col = "red", x=0.5)) +
+    theme(legend.position="none") +
+    labs(title="Sentiment on Teachers with Guns in Schools", 
+         x="Independent Party vs Other",
+         y="Rating")
+```
+The boxplot reinforces the notion that independent voters tend to be more on the disapproving side of the spectrum, as there is a greater density of data above the "Neutral" line. Additionally, we can see that independent voters are generally similar to the rest of the population of voters on this issue.
+
+As a result, we decided to use a non-parametric one-sample two-sided Wilcoxon signed rank test for this question, so that we can utilize the ordinal variable and don’t need to assume the normality of data. All the assumptions for the test are held as the variable uses an interval scale, the data is iid, and the values roughly follow a symmetric distribution with respect to mu = 4. The test is two-sided as that is more conservative and the direction of the question is not clear enough to justify a one-sided test. This test will indicate whether the approval group ranks above or below the disapproval group.
+
+The null hypothesis is that independent voters have no preference on allowing teachers to carry guns to school. This is a two-sided test, so the alternative hypothesis is that independent voters are not neutral on this issue and, thus, either approve or disapprove of the issue.
+
+```{r}
+wilcox.test(indep$gunteach, mu = 4)
+```
+According to the test result, the p-value is much smaller than alpha = 0.05. So, it is fair to reject the null hypothesis. We can also refer to previous boxplot and histogram to determine which side of the issue that the independent voters are on. The plots then indicate that the majority of independent voters do not approve of teachers carrying guns in schools.
+
+The effect size indicates why we should care about the results of our statistical test, as it does not depend on the sample size. This represents our practical significance. The result, r, is related to the probability that one group (disapproval) is larger than the other (approval).
+
+```{r}
+model5 <- wilcox.test(indep$gunteach, mu = 4)
+z <- qnorm(model5$p.value/2)
+r <- z/sqrt(nrow(indep))
+cat("Effect Size, r = ",abs(r))
+```
+This is a small effect size. So, there is a reasonable overlap between the two distributions of approval and disapproval. This means that although our results are very statistically significant, the results are not as practically significant.
+
+So, in conclusion, it is fair to reject the null hypothesis by using the one-sample Wilcoxon signed rank test, which indicates that independent voters have somewhat more disapproval for teachers carrying guns in schools.
+
+
+
+
