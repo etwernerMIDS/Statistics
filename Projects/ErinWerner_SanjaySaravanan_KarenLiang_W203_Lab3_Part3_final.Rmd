@@ -1,0 +1,989 @@
+---
+title: "W203 Lab 3 Part 3"
+author: "Section 6"
+subtitle: Erin Werner, Sanjay Saravanan, & Karen Liang
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+#Introduction
+
+The research question that is of interest to us for this political campaign can be described as the following:
+
+**Does population affect crime rate?**
+
+Specifically, we would like to predict crime rate given a certain population. It’s understandable that crime rates differ throughout the United States, and since it’s known that the data provided is for the state of North Carolina, it’s true that crime rates can vary in each region or city within the state. Also, it’s a known fact that population varies from region to region and state to state.
+
+*What does population mean?*
+
+A population is a broad term that can consist of many different factors. In order to understand a population, it may be helpful to know key characteristics such as the size of the population, location/region, economic status, or varying ethnicities that make up that population.
+
+*What does crime rate mean?*
+
+The key concept that we are attempting to measure here is a causal estimate of the number of crimes committed per person based on factors of population.
+
+*Why is this important?*
+
+It would be beneficial for policymakers or law enforcement to understand how certain populations have an effect on crime rates because it can provide useful insights into the following kinds of questions:
+
+* Does law enforcement need to be stricter in certain populations within North Carolina?
+* Is there a tendency for there to be higher crime rates in smaller or larger populations?
+* Does an overarching economic status of a given population have a causal effect on crime rate?
+
+By gaining these insights, the local government can make the necessary policies or decisions to address such issues or concerns.
+
+In regards to the overall appropriateness of the data, we are provided with information such as crime rates, law enforcement, wages, sizes of the populations, to name a few per county. All of these variables can definitely be considered as factors of population, which may be useful in our research. With these key data, we can begin to assess any relationships between these variables as well as their overall impact on crime rates.
+
+#A Model Building Process
+
+```{r, message = FALSE}
+library(ggplot2)
+library(lmtest)
+library(sandwich)
+library(stargazer)
+library(car)
+library(lindia)
+library(reshape2)
+```
+
+```{r}
+crime <- read.csv("~/Downloads/lab_3-master/crime_v2.csv")
+```
+
+```{r}
+paste("Sample Size: ", nrow(crime))
+```
+
+There are some rows with repeated/null values for our chosen variables that need to be removed for our model.
+
+```{r}
+length(unique(crime$county))
+```
+
+```{r}
+crime <- crime[-which(is.na(crime)),]
+crime <- crime[!duplicated(crime),]
+paste("Sample Size: ", nrow(crime))
+```
+
+```{r}
+summary(crime)
+```
+
+```{r}
+summary(crime$crmrte)
+```
+
+```{r}
+ggplot(crime, aes(crmrte)) + 
+  geom_histogram(binwidth = 0.01, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Crime Rate",
+       x = "Crime Rate (crimes committed per person)",
+       y = "Frequency")
+```
+
+```{r}
+ggplot(crime, aes(sample = crmrte)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot",
+       x = "Theoretical Quantiles",
+       y = "Sample Quantiles")
+```
+
+In the histogram above, we can notice a positive skew with crime rate, our dependent variable for our models. However, in our Q-Q Plot, we notice that a good majority of points do fall around the diagonal line, but the points near both tail ends fall above the line. Yet, since we know that our sample size is 90, which is greater than 30, we can rely on asymptotic assumptions of normality under a version of the Central Limit Theorem.
+
+**Model 1 - Basic**
+
+Our key variable to understand our research question is density. We made the decision to choose density as our key explanatory variable, as we would like to measure if the sizes of populations have an effect on crime rate. In other words, we would like to measure if counties with larger populations may potentially have larger effects on crime rate and vice versa.
+
+```{r}
+summary(crime$density)
+```
+
+In 1987, the total population of North Carolina was 6.481 million people. The total land area of North Carolina is 53,819 square miles. Therefore, the average population density in 1987 was approximately 120.42 people per square mile. Thus, it's believed that our data is recorded in 100s of people per square mile.
+
+```{r}
+ggplot(crime, aes(density)) + 
+  geom_histogram(binwidth = 1, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Density",
+       x = "Density (people per sq. mile)",
+       y = "Frequency")
+```
+
+```{r}
+ggplot(crime, aes(sample = density)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot",
+       x = "Theoretical Quantiles",
+       y = "Sample Quantiles")
+```
+
+It's noticeable that our histogram for density shows a strong positive skew. According to the Q-Q Plot, a majority of the data points fall along the diagonal line, but tend to be above the line at the tail ends. Yet, we can still rely on asymptotic assumptions of normality.
+
+```{r}
+model1 <- lm(crmrte ~ density, data = crime)
+model1
+```
+
+According to our model, a unit increase in density (100s of people per square mile) shows an increase of 0.009 crimes committed per person.
+
+```{r}
+ggplot(crime, aes(x=density, y=crmrte)) + 
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  labs(y="Crime Rate", 
+       x="Density", 
+       title="Crime Rate vs. Density")
+```
+
+Above, we notice the scatterplot of crime rate vs. density as well as the regression line predicted by our model. There appears to be a positive relationship between population size and crime rate.
+
+**Model 1.5 - Basic Transformation**
+
+In addition to our first model, we will be performing a log-log transformation. This decision was made because we wanted to research whether or not a model detailing the impact of a percentage change in sizes of populations on the percentage change in crime rate would be a better-fitting model.
+
+```{r}
+ggplot(crime, aes(log(crmrte))) + 
+  geom_histogram(binwidth = 0.5, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Crime Rate Percentages",
+       x = "Percentage of Crime Rate",
+       y = "Frequency")
+```
+
+The overall shape of the histogram for the crime rate percentage appears to be approximately normal.
+
+```{r}
+ggplot(crime, aes(log(density))) + 
+  geom_histogram(binwidth = 0.5, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Density Percentages",
+       x = "Percentage of Density",
+       y = "Frequency")
+```
+
+The overall shape of the histogram for the density percentage appears to be fairly normal, but may appear to have a negative skew due to a potential outlier. We can still rely on asymptotic assumptions of normality.
+
+```{r}
+model1t <- lm(log(crmrte) ~ log(density), data = crime)
+model1t
+```
+
+According to our model, a percentage increase in density (100s of people per square mile) shows a 0.197% increase in crimes committed per person.
+
+```{r}
+ggplot(crime, aes(x=log(density), y=log(crmrte))) + 
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  labs(y="Log(Crime Rate)", 
+       x="Log(Density)", 
+       title="% Change in Crime Rate vs. % Change in Density")
+```
+
+Above, the scatterplot of log(crime rate) vs. log(density) as well as the regression line predicted by our model shows that there indeed appears to be a positive relationship between percentage change in sizes of populations and percentage change in crime rate.
+
+**Model 2 - Ideal**
+
+For our second model, we will be measuring our key explanatory variable of density along with variables including probability of arrest, percentage of minority, and police per capita.
+
+Although density itself is a key characteristic of population and can be used to measure crime rate, the following are several reasons for why it would be important to include the above covariates:
+
+* The variables for probability of arrest, percentage of minority, and police per capita can all vary from region to region within various populations.
+* The probability of arrest can provide insights into how effective law enforcement is in various populations.
+* The percentage of minorities can provide insights into whether or not we notice more or less crime in populations with certain ethnicities.
+* The police per capita can provide insights into whether or not crime occurs more often in populations with different numbers of police officers.
+
+```{r}
+summary(crime$prbarr)
+```
+
+Because of the given information that the probability of arrest isn't a true probability, but rather a ratio, it's acceptable that we have a value greater than 1. Yet, it could be a potential outlier.
+
+```{r}
+ggplot(crime, aes(prbarr)) + 
+  geom_histogram(binwidth = 0.2, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Probability of Arrest",
+       x = "Probability of Arrest",
+       y = "Frequency")
+```
+
+This histogram also shows a positive skew. 
+
+```{r}
+summary(crime$pctmin80)
+```
+
+```{r}
+ggplot(crime, aes(pctmin80)) + 
+  geom_histogram(binwidth = 10, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Percentage of Minority (1980)",
+       x = "Percentage of Minority",
+       y = "Frequency")
+```
+
+There also appears to be a somewhat positive skew with the percentages of minorities according to the histogram. So, we can rely on asymptotic assumptions of normality.  
+
+```{r}
+summary(crime$polpc)
+```
+
+```{r}
+ggplot(crime, aes(polpc)) + 
+  geom_histogram(binwidth = 0.001, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Police per Capita",
+       x = "Police per Capita",
+       y = "Frequency")
+```
+
+It's noticeable that there is a positive skew in the histogram, with a potential outlier. Yet, the distribution is fairly normal.
+
+```{r, warning=FALSE}
+scatterplotMatrix(crime[,c("crmrte", "density", "prbarr", "pctmin80", "polpc")], diagonal = "histogram")
+```
+
+Following are the key observations from the above scatterplot matrix:
+
+Density and crime rate appear to have a positive relationship as was also described from Model 1. An increase in the size of a population shows an increase in the crime rate. This could indicate that crime rates tend to be higher within cities vs. suburban areas, for example.
+
+Probability of arrest and crime rate appear to have a negative relationship. An increase in the probability of arrest shows a decrease in the crime rate within a population. This could indicate that if there are higher chances of making arrests within certain counties, crimes are less likely to occur there.
+
+Percentage of minority and crime rate appear to have a positive relationship. An increase in the percentage of minorities also shows an increase in the crime rate. This could indicate that crimes may be occurring more often in neighborhoods that have larger percentages of minority people.
+
+Police per capita and crime rate appear to have a positive relationship. An increase in the number of police officers within a population shows an increase in crime rate as well. At first, this outcome seems rather odd. However, one plausible reason for why that may be is that the local law enforcement may be more disorganized in counties with a greater number of police officers, and has become less effective.
+
+Overall, these observations are definitely important in being able to generate policy suggestions applicable to local government.
+
+```{r}
+model2 <- lm(crmrte ~ density + prbarr + pctmin80 + polpc, data = crime)
+model2
+```
+
+According to our model and holding all other variables constant, a unit increase in density (100s of people per square mile) shows an increase of 0.0075 crimes committed per person. A unit increase in the probability of arrest (ratio of arrests to offenses) shows a decrease of 0.046 crimes committed per person. A unit increase in the percentage of minority (proportion of the population that is minority) shows an increase of 0.00032 crimes committed per person. A unit increase in the police per capita shows an increase of 5.02 crimes committed per person.
+
+```{r}
+scatter.smooth(crime$density
+              +crime$prbarr
+              +crime$pctmin80
+              +crime$polpc
+              , y=crime$crmrte, 
+              main="Crime Rate", xlab="Explanatory Variables", ylab="Crime Rate")
+```
+
+Overall, the model describes that along with our key explanatory variable of density, two covariates also show a positive coefficient/relationship while one shows a negative coefficient/relationship. Additionally, it's observed that the coefficient of police per capita shows a much larger coefficient and therefore a greater slope. This would indicate that crime rate increases at a faster rate with an increase in the number of police officers per county.
+
+**Model 3 - Complex**
+
+For our third model, we will be measuring our key explanatory variables, previous covariates, as well as several other covariates including:
+
+* weekly wage of local government employees
+* average sentence measured in number of days
+* probability of a prison sentence
+
+Although density and the other covariates from Model 2 are key characteristics of population and can be used to measure crime rate, we made the decision to include the above covariates since they may be useful for the following reasons:
+
+* Data about the weekly wage of local government employees (which includes local law enforcement) can provide insights into whether or not law enforcement is more effective in counties where employees have higher salaries. We decided to choose the weekly wage of local government employees instead of the other wage variables since we believe local law enforcement in each county would have the most influence over crime rate.
+* The average sentence measured in number of days may be useful for us to make policy suggestions regarding stricter sentences if crime rates tend to go down in counties that have harsher consequences.
+* The probability of a prison sentence (computed as the convictions resulting in a prison sentence to total convictions) can provide insights into whether or not an increase in crime rate is probable in counties where law enforcement and courts may be less effective in finding and punishing criminals.
+
+We did not include all other covariates into our complex model since many of them did not logically fit in with our research question. It's also important to note that the variables that were included cannot be classified as direct outcomes of each other.
+
+```{r}
+summary(crime$wloc)
+```
+
+```{r}
+ggplot(crime, aes(wloc)) + 
+  geom_histogram(binwidth = 20, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Weekly Wage of Local Government Employees",
+       x = "Weekly Wage of Local Government Employees",
+       y = "Frequency")
+```
+
+The histogram for the weekly wage for local government employees appears to be approximately normal.  
+
+```{r}
+summary(crime$avgsen)
+```
+
+```{r}
+ggplot(crime, aes(avgsen)) + 
+  geom_histogram(binwidth = 1.5, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Average Sentence",
+       x = "Average Sentence (Number of Days)",
+       y = "Frequency")
+```
+
+The overall shape of the histogram for the average sentence in the number of days shows a positive skew.
+
+```{r}
+summary(crime$prbpris)
+```
+
+```{r}
+ggplot(crime, aes(prbpris)) + 
+  geom_histogram(binwidth = 0.05, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size = 0.05) +  
+  labs(title="Histogram of Probability of Prison Sentence",
+       x = "Probability of Prison Sentence",
+       y = "Frequency")
+```
+
+The histogram for the probability of a prison sentence appears to be approximately normal. 
+
+```{r, warning=FALSE}
+scatterplotMatrix(crime[,c("crmrte", "density", "prbarr", "pctmin80", "polpc", "wloc", "avgsen", "prbpris")], diagonal = "histogram")
+```
+
+In regards to the added covariates, following are the key observations that can be noted from the above scatterplot matrix:
+
+The weekly wage of local government employees and crime rate appear to have a positive relationship. This could be indicative of the idea that a growing economy doesn't necessarily mean crime rates will drop, and therefore this variable may not be enough to tell the complete story of an impact on crime rate.
+
+For the relationships between average sentences in number of days as well as probability of prison sentence and crime rate, it’s difficult to observe an obvious relationship.
+
+```{r}
+model3 <- lm(crmrte ~ density + prbarr + pctmin80 + polpc + wloc + avgsen + prbpris, data = crime)
+model3
+```
+
+Holding all other variables constant:
+
+* A unit increase in density (100s of people per square mile) shows an increase of 7.540e-03 crimes committed per person.
+* A unit increase in the probability of arrest (ratio of arrests to offenses) shows a decrease of 4.646e-02 crimes committed per person.
+* A unit increase in the percentage of minority (proportion of the population that is minority) shows an increase of 3.178e-04 crimes committed per person.
+* A unit increase in the police per capita shows an increase of 5.650 crimes committed per person.
+* A dollar increase in the wage of local government employees shows a slight increase of 2.268e-08 crimes committed per person.
+* An increase in one day in the average sentence shows a decrease of 4.290e-04 crimes committed per person.
+* A unit increase in the probability of a prison sentence (number of convictions resulting in a prison sentence to total convictions) shows a decrease of 8.027e-03 crimes committed per person.
+
+Other key notes:
+
+* An increase in the average sentence shows a decrease in crime rate, which could indicate that harsher sentences could definitely deter crime.
+* An increase in the probability of a prison sentence also shows a decrease in crime rate, which could indicate that the more sentences handed out per convictions could also be a deterrent for crime.
+
+```{r}
+scatter.smooth(crime$density
+              +crime$prbarr
+              +crime$pctmin80
+              +crime$polpc
+              +crime$wloc
+              +crime$avgsen
+              +crime$prbpris
+              , y=crime$crmrte, 
+              main="Crime Rate", xlab="Explanatory Variables", ylab="Crime Rate")
+```
+
+```{r}
+crime_df <- crime[,c("crmrte", "density", "prbarr", "pctmin80", "polpc", "wloc", "avgsen", "prbpris")]
+cormat <- round(cor(crime_df),2)
+
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+}
+
+upper_tri <- get_upper_tri(cormat)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+```
+
+```{r}
+cor(crime_df)
+```
+
+```{r}
+ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "steelblue3", high = "darkred", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation") +
+ theme_minimal() + 
+ labs(x = "", y = "", title = "Correlation Matrix") + 
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))+
+ coord_fixed()
+```
+
+Looking at the above correlation matrix, we note the following:
+
+* Density has the highest correlation to crime rate.
+* Probability of arrest has the lowest correlation to crime rate.
+* Looking at the independent variables, it's also noticeable that no variable has a relatively large correlation to any other variable, which could be an indication of no multicollinearity.
+
+**Comparing All Models**
+
+```{r}
+paste("Model 1 R-square: ", summary(model1)$r.square)
+paste("Model 1 (Transformed) R-square: ", summary(model1t)$r.square)
+paste("Model 2 R-square: ", summary(model2)$r.square)
+paste("Model 3 R-square: ", summary(model3)$r.square)
+```
+
+Model 3 has the highest value for $R^2$ and indicates that this model explains a larger percentage of the variation in the response variable around its mean in comparison to the other models. However, a model with more predictor variables might fit better, but may be less parsimonious than a simpler model with just a few strong predictor variables. In other words, the $R^2$ value can only increase with the addition of more covariates. So, Model 3 may actually not be the best-fitting model for our research.
+
+In order to figure out which model has the most parsimonious fit, we will use the Akaike Information Criterion (AIC) which actually penalizes the model as the number of variables increases. Essentially, larger AIC values indicate worse fit, and it's also important to note that AIC doesn't describe the quality of the model, but rather the relative fit between models.
+
+```{r}
+paste("Model 1 AIC Value: ", AIC(model1))
+paste("Model 1 (Transformed) AIC Value: ", AIC(model1t))
+paste("Model 2 AIC Value: ", AIC(model2))
+paste("Model 3 AIC Value: ", AIC(model3))
+```
+
+Model 2 has the lowest AIC value and therefore the most parsimonious fit. 
+
+We can also compare the models with an F-test.
+
+```{r}
+anova(model1, model2, model3)
+```
+
+As one can see, the result shows a very small p-value (< .001) for Model 2. This means that adding just the three variables to the ideal model did lead to a significantly improved fit over the basic model. Furthermore, the complex model does not have a significant p-value, indicating that the additional variables did not necessarily improve the model fit.
+
+Going forward, we will use Model 2 as the model for our research question in this political campaign.
+
+Now, we will look for outliers.
+
+```{r}
+creg <- lm(crmrte ~ density + prbarr + pctmin80 + polpc, data = crime)
+creg
+```
+
+```{r}
+plot(creg, which = 5)
+```
+
+Here, our Residuals vs Leverage plot is used to identify points that are outliers and have a lot of influence. Points that increase along the x-axis are increasing in leverage, which means that they have the most potential to affect coefficients. Yet, leverage is not necessarily the same thing as influence. We are more concerned with points that have a large Cook's distance. They could be extreme cases against our regression line and can alter the results if we exclude them from analysis. As there are a couple of points that have a large Cook's distance, we will want to investigate those further.
+
+```{r}
+crime[c(51, 25, 89),c(1,3,9,4,14,8)]
+```
+
+These observations have a particularly unusual combination of predictor values. So, they are possible outliers that should be removed as they are the cases that are influential to the regression results.  
+
+```{r}
+summary(crime$pctmin80)
+```
+
+The point with the greatest Cook's distance (51) has the minimum value for pctmin80.
+
+```{r}
+summary(crime$prbarr)
+```
+
+The point with the greatest Cook's distance (51) has the maximum prbarr value, which is much higher than the next closest value. 
+
+```{r}
+summary(crime$polpc)
+```
+
+The point with the greatest Cook's distance (51) has the maximum polpc value, which is over double the next closest value. As it has the minimum value for pctmin80 and the maximum value for prbarr and polpc, this suggests that this point is, indeed, an outlier that should be removed. The other two points (25 & 90) also have large polpc values compared to the overall range of values, suggesting that they are also influential outliers.
+
+```{r}
+crime <- crime[-c(51, 25, 89),]
+nrow(crime)
+```
+
+We have good reasons to think that the data points aren't wrong, exactly, but aren't necessarily a good representation of the general population that we are trying to study. So, we can justifiably remove these points from our model.
+
+Furthermore, our data set is still fairly large (87 > 30), so we can continue to rely on asymptotic assumptions of normality under a version of the Central Limit Theorem.
+
+```{r}
+creg <- lm(crmrte ~ density + prbarr + pctmin80 + polpc, data = crime)
+creg
+```
+
+```{r}
+plot(creg, which = 5)
+```
+
+There are no influencing outliers in our dataset.
+
+#An Assessment of the CLM Assumptions
+
+Now we will assess the model (Model 2) that includes our key explanatory variables and covariates that advance our modeling goals without introducing too much multicollinearity or causing other issues. This model strikes a balance between accuracy and parsimony and reflects our best understanding of the relationships among key variables.
+
+This model is able to tell us how the population impacts crime rate. 
+
+```{r}
+creg
+```
+
+```{r}
+cr.res <- resid(creg)
+crime$residuals <- cr.res
+crime$index <- seq(1,nrow(crime))
+crime$predicted <- predict(creg)
+```
+
+Here, we will do a complete assessment of all 6 classical linear model (CLM) assumptions on our model.
+
+The goal of our model is to draw meaning from our results which will help the campaign understand the determinants of crime and generate policy suggestions that are applicable to local government. 
+
+Our results will help us advise the campaign on how the population impacts crime rates. This will then help the campaign to draft deterrent legislation that considers population as an influencing factor. Our specific model variables can also help the campaign to target specific ways in which the policies can reduce crimes.
+
+This is best achieved when the model is a Best Linear Unbiased Estimator (BLUE) or, in other terms, follows the Gauss-Markov Theorem. 'B' refers to the relative efficiency with the smallest variance, 'L' refers to the linear function of the system, and 'U' refers to each $\hat\beta_j$ being an unbiased estimator for the true parameter, ($E(\hat\beta_j)=\beta_j$). The five assumptions that make up the Gauss-Markov and an additional assumption form the six CLM assumptions that we will be assessing.
+
+#CLM Assumption 1: Linearity
+
+Linearity means that the model relies on variables that have a linear relationship, plus some amount of error.
+
+We know that our model is linear as it has both dependent (Y: crmrte) and independent (X: density, prbarr, pctmin80, & polpc) variables. The model has an estimated intercept, $\hat\beta_0$, and each independent variable has an estimated slope coefficient $\hat\beta_i$. 
+
+```{r}
+creg
+```
+
+```{r}
+ggplot(crime, aes(x=predicted, y=residuals)) + 
+  geom_point() + 
+  geom_hline(yintercept = 0, color = "red") + 
+  geom_smooth(method="loess", se=F) +
+  labs(y="Residual", 
+       x="Fitted", 
+       title="Residual vs Fitted Values")
+```
+
+We can further confirm linearity through the Residuals vs Fitted plot as there is no apparent pattern amongst the data points. Also, the spline curve is somewhat flat and stays within the [-0.01, 0.01] range around the zero-line. This means that the model is, indeed, linear.
+
+Therefore, it's safe to claim that the first CLM Assumption of Linearity is satisfied for our model.
+
+#CLM Assumption 2: Random Sampling
+
+Random sampling is important as the data needs to follow the population distribution and be independent and identically distributed (iid). 
+
+We know that the data maintains this assumption because of where the data came from and how it was collected. The political campaign we were hired by obtained a dataset of crime statistics for a selection of counties in North Carolina. Some of the data on convictions was taken from the prison and probation files of the North Carolina Department of Correction. General demographic variables were drawn from census data. The number of police per capita was computed from the FBI's police agency employee counts. The variables for wages in different sectors were provided by the North Carolina Employment Security Commission. Overall, there is no clustering and no serial correlation as it’s a single cross-section of the data that is not time-series based. 
+
+As we know where the data came from, it’s fair to conclude that the data was randomly selected. Therefore, we can claim that the second CLM Assumption of Random Sampling is satisfied for our model.
+
+#CLM Assumption 3: No Perfect Collinearity
+
+No perfect collinearity requires that no independent variables are constant and that there are no exact relationships among them. 
+
+```{r}
+crime_sub <- crime[,c(3,9,4,14,8)]
+plot(crime_sub)
+```
+
+Based on this plot matrix, there are no constant independent variables nor obvious exact relationships between any of the variables in our model.
+
+The Variance Inflation Factor (VIF) and the Condition Number are measures traditionally applied to detect the presence of collinearity in a multiple linear regression model.
+
+The Condition Number, rather than looking at individual variables, looks at sets of variables. Since collinearity is a function of sets of variables, this is very useful in detecting multicollinearity. A high Condition Number (over 100) means that some of the predictor variables are close to being linear combinations of each other, meaning that there is multicollinearity. 
+
+```{r}
+kappa(cor(crime_sub), exact = TRUE)
+```
+
+Our Conditional Number is very small (substantially less than 100), indicating that there is no multicollinearity in our model. 
+
+You can also assess multicollinearity by examining tolerance and the VIF. Tolerance is a measure of collinearity represented by (1 - $R^2$). The VIF is 1/Tolerance and it's always greater than or equal to 1. Values of VIF that exceed 10 are often regarded as indicating multicollinearity.
+
+```{r}
+vif(creg)
+```
+
+Furthermore, each of our VIFs are small (less than 2), which also indicates that there is no multicollinearity in our model.
+
+As a result, there is no multicollinearity in our model and so it's fair to claim that the third CLM Assumption of No Perfect Collinearity is satisfied.
+
+#CLM Assumption 4: Zero Conditional Mean & CLM Assumption 5: Homoskedasticity
+
+Zero conditional mean means that the value of explanatory variables contains no information about the mean of the unobserved factors, which is represented by $E(u_i | x_{i1},x_{i2},...,x_{ik})$ = 0. This then enforces linearity.
+
+Homoskedasticity indicates that the variance of the error terms is constant. Although it's slightly unrealistic in the real world, the assumption states that the explanatory variable values contain no information about the variability of error. This is represented by $Var(u_i|x_{i1},x_{i2},...,x_{ik}) = \sigma^2$.
+
+```{r}
+ggplot(crime, aes(x=predicted, y=residuals)) + 
+  geom_point() + 
+  geom_hline(yintercept = 0, color = "red") + 
+  geom_smooth(method="loess", se=F) +
+  labs(y="Residual", 
+       x="Fitted", 
+       title="Residual vs Fitted Values")
+```
+
+Once again, we will take a look at our Residuals vs Fitted plot. Here, we can see that the assumption of zero conditional mean is roughly satisfied. The data is roughly centered around the zero-line. The mean does not change drastically from left to right despite there being a greater density of points to the left. So, values are not extremely different for different values of x. Although the spline curve isn't necessarily flat, the major deviations are due to a few outlying points. There is approximately a flat band of points for the plot and our error is approximately zero in expectation.
+
+As the zero conditional mean is satisfied, we do not necessarily need to try to satisfy the weaker assumption of exogeneity. Yet, for large-sample properties, exogeneity is still important. Exogeneity refers to how the explanatory variable is not correlated with the error term, which is represented by $Cov(x_j, u) = 0$ for all $j$. As the stronger assumption of zero conditional mean is satisfied, so is the assumption of exogeneity. The first three assumptions with the exogeneity assumption indicates that the OLS estimators are consistent. Yet, as the first four assumptions are, indeed, satisfied for our model, we can deduce that our model has unbiased coefficients.
+
+However, unbiased coefficients and consistency only means that we are right in expectation. So, we need to consider homoskedasticity as well. 
+
+Referring back to our Residual vs Fitted plot, there is also a generally uniform thickness of points around the zero-line. However, there is a greater density of points to the left. This means that the variance of errors is roughly constant, which roughly satisfies the assumption of homoskedasticity. But, we need to further explore the density of the data.
+
+As a result, the explanatory variable values must contain no information about the variability of errors as the thickness of the band of residuals is the same for all x values. 
+
+```{r}
+ggplot(crime, aes(x=predicted, y=sqrt(abs(residuals)))) + 
+  geom_point() + 
+  geom_hline(yintercept = 0, color = "red") + 
+  geom_smooth(method="loess", se=F) +
+  labs(y="Residual", 
+       x="Fitted", 
+       title="Scale Location Plot")
+```
+
+In our Scale Location plot, we can see that the band of residuals is approximately horizontal, but the spline curve reveals that the band of points is not necessarily flat. This violates the assumption of homoskedasticity.
+
+```{r}
+bptest(creg)
+```
+
+The Breusch-Pagan test reveals a p-value that is less than alpha = 0.05, meaning that it’s statistically significant. So, it’s fair to reject the null hypothesis, indicating that there is actually some heteroskedasticity in our model. But, as our sample size is 87, there is reason to believe that the significance could be influenced by the large sample size. 
+
+However, there are heteroskedasticity-robust standard errors that we can apply to our model to correct for any heteroskedasticity, such as the White Standard Errors, and thus maintain the assumption for CLM.
+
+```{r}
+vcovHC(creg)
+```
+
+This is a Variance-Covariance matrix that is robust to heteroskedasticity. These heteroskedastic-robust standard errors are more conservative and, generally, safer to use.
+
+```{r}
+coeftest(creg, vcov = vcovHC)
+```
+
+Now, for a one unit increase in each variable, there would be an 'Estimate' change in the crime rate that considers heteroskedastic-robust standard errors.
+
+As a result, our model then satisfies the fourth and fifth CLM Assumptions of Zero-Conditional Mean and Homoskedasticity.
+
+Overall, as the first five assumptions are satisfied for our model, we can compute an exact formula for the variance of the slope coefficients, $Var(\hat\beta_j) = \sigma^2/(SST_j)(1-R_j^2)$ for $j = 1,...,k$.
+
+The more the error varies, the more noise there is to influence the estimators so the variance increases. We want our model to have the smallest possible variance, which is achieved by maintaining the first five assumptions. These conditions collectively make up the Gauss-Markov Theorem, which means that our OLS estimators are BLUE of regression coefficients.
+
+However, it's not enough to know the variance of the estimators, we need to know the shape as well.
+
+#CLM Assumption 6: Normality of Residuals
+
+The sixth assumption for CLM is that the errors are normally distributed, represented by $u_i = N(0, \sigma^2)$. Although the distribution will be normal for large sample sizes by a version of the Central Limit Theorem, it's still important to check this condition. This strong assumption indicates that the errors are independent of our x's and satisfies the CLM.
+
+In the frequentist framework, $H_o : \hat\beta_j = 0$, where $t\hat\beta_j * \hat\beta_j/Se(\hat\beta_j)$ for $t_{n-k-1}$. This represents how many estimated standard errors the estimated coefficient is away from zero.
+
+```{r}
+ggplot(crime, aes(residuals)) + 
+  geom_histogram(binwidth = 0.01, 
+                 fill = "mediumturquoise",
+                 col="white",
+                 size=0.1) +  
+  labs(title="Histogram of Residuals",
+       x = "Residuals",
+       y = "Frequency")  
+```
+
+The histogram reveals that the errors are normally distributed despite some outlying points, holding the sixth assumption of the CLM to be true.
+
+```{r}
+ggplot(crime, aes(sample = residuals)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot",
+       x = "Theoretical Quantiles",
+       y = "Sample Quantiles")
+```
+
+The Q-Q Plot reveals that the data points almost all fall on the diagonal line, meaning that there is further evidence that the residuals follow a normal distribution. Although there is some deviation at each end of the line, the majority of points actually fall on the diagonal, making the plot a good indication of normality.
+
+To statistically test the normality assumption, we can use the Shapiro-Wilk test. In this context, $H_o$ is that the errors are normal.
+
+```{r}
+shapiro.test(creg$residuals)
+```
+
+Although the Shapiro-Wilk test does not show how large the deviations from the normal distribution are, the p-value is less than alpha = 0.05. This means that the result is statistically significant and we can reject the null hypothesis that the errors are normal. Yet, it's important to, once again, consider sample size and refer to asymptotic assumptions of normality and our explanatory plots. 
+
+So, we can still assume that the residuals follow a normal distribution. Thus, the sixth CLM Assumption of the Normality of Residuals is satisfied.
+
+Therefore, we can assess that all six assumptions of the CLM are satisfied.
+
+#A Regression Table
+
+First, we will take a closer look at each of our models. We want to consider both the statistical and practical significance of our results. So, we will also consider the standard t-test, the $R^2$, the adjusted $R^2$, and Cohen's $f^2$ values for each model.
+
+The t-test can help us to decide whether there is any significant relationship between x and y by testing the null hypothesis that $\hat\beta$ = 0. It will determine if there is a significant relationship between the variables in the linear regression model at alpha = 0.05 significance level.
+
+Although the t-test will be useful for our analysis, the $R^2$ evaluates the scatter of the data points around the fitted regression line. It's also called the coefficient of multiple determination for multiple regression. Generally, higher $R^2$ values represent smaller differences between the observed data and the fitted values. $R^2$ is the percentage of the dependent variable variation that a linear model explains. Usually, the larger the $R^2$, the better the regression model fits your observations. The adjusted $R^2$ is a modified version of $R^2$ that has been adjusted for the number of predictors in the model. The adjusted $R^2$ increases only if the new term improves the model more than would be expected by chance.
+
+Cohen’s $f^2$, the parameter, is the standard deviation of the population means divided by their
+common standard deviation. Cohen’s $f^2$ method measures the effect size and practical significance for multiple regression. Cohen's $f^2$ is a measure of a kind of standardized average effect in the population across all the levels of the independent variables. Cohen's $f^2$ can take on values between zero, when the population means are all equal, and an indefinitely large number as standard deviation of means increases relative to the average standard deviation within each group. $f^2$ increases as $R^2$ increases. A small effect size would mean that the results are not very practically significant.
+
+Our first model is very simple and only considers one independent variable in relation to crime rate.
+
+```{r}
+creg1 <- lm(crmrte ~ density, data = crime)
+creg1
+```
+
+```{r}
+coef(summary(creg1))[2,4]
+```
+
+The t-test results are less than alpha = 0.05, meaning that there is a statistically significant relationship between the variables. However, there are other measures we should consider.
+
+```{r}
+r2_1 <- summary(creg1)$r.square
+
+paste("Model 1 R-square: ", summary(creg1)$r.square)
+paste("Model 1 Adjusted R-square: ", summary(creg1)$adj.r.square)
+```
+
+These are fairly large $R^2$/adjusted $R^2$ values, which means our basic model is a decent fit and statistically significant.
+
+```{r}
+f2_1 <- r2_1/(1-r2_1)
+f2_1
+```
+
+This is also a fairly large effect size, meaning that our results are also practically significant.
+
+So, our most basic model serves as a good baseline for model comparison.
+
+Next, we want to observe the same model, but as a log-log relationship.
+
+```{r}
+creg1t <- lm(log(crmrte) ~ log(density), data = crime)
+creg1t
+```
+
+```{r}
+coef(summary(creg1t))[2,4]
+```
+
+The t-test results are less than alpha = 0.05, meaning that there is a statistically significant relationship between the variables.
+
+```{r}
+r2_1t <- summary(creg1t)$r.square
+
+paste("Model 1 R-square: ", summary(creg1t)$r.square)
+paste("Model 1 Adjusted R-square: ", summary(creg1t)$adj.r.square)
+```
+
+These are small $R^2$/adjusted $R^2$ values, which means this model does not explain much of the variation in the response variable around its mean. The mean of the dependent variable predicts the dependent variable as well as the regression model.  
+ 
+```{r}
+f2_1t <- r2_1t/(1-r2_1t)
+f2_1t
+```
+
+This is a rather small effect size, meaning that the results are not that practically significant either.
+
+Therefore, this model is not as statistically or practically significant as our baseline model.
+
+Now, we will look at our ideal model, the one on which we checked our CLM assumptions.
+
+```{r}
+creg2 <- lm(crmrte ~ density + prbarr + pctmin80 + polpc, data = crime)
+creg2
+```
+
+```{r}
+coef(summary(creg2))[2,4]
+```
+
+The t-test results are less than alpha = 0.05, meaning that there is a statistically significant relationship between the variables. But, we will also take a look at the other measures to determine the significance.
+
+```{r}
+r2_2 <- summary(creg2)$r.square
+
+paste("Model 1 R-square: ", summary(creg2)$r.square)
+paste("Model 1 Adjusted R-square: ", summary(creg2)$adj.r.square)
+```
+
+The model we believed to have the best balance between accuracy and parsimony has a high $R^2$ and adjusted $R^2$ value. These high scores mean that our model explains most of the variation in the response variable around its mean.
+ 
+```{r}
+f2_2 <- r2_2/(1-r2_2)
+f2_2
+```
+
+This is a large effect size, meaning that our ideal model is both statistically and practically significant.
+
+As a result, our ideal model is more statistically and practically significant than our baseline, proving that our model includes the key explanatory variables and covariates that advance our modeling goals without introducing too much multicollinearity or causing other issues.
+
+Last, we will take a look at our complex model.
+
+```{r}
+creg3 <- lm(crmrte ~ density + prbarr + pctmin80 + polpc + wloc + avgsen + prbpris, data = crime)
+creg3
+```
+
+```{r}
+coef(summary(creg3))[2,4]
+```
+
+The t-test results are less than alpha = 0.05, meaning that there is a statistically significant relationship between the variables.
+
+```{r}
+r2_3 <- summary(creg3)$r.square
+
+paste("Model 1 R-square: ", summary(creg3)$r.square)
+paste("Model 1 Adjusted R-square: ", summary(creg3)$adj.r.square)
+```
+
+The model with more variables than our balanced model has a slightly higher $R^2$ value. Yet, the difference is not that much bigger and an $R^2$ value will never decrease with added variables. Furthermore, the adjusted $R^2$ value is lower than that of our ideal model. So, it's fair to say that the extra variables only explain a bit more of the variation in the response variable around its mean, at the expense of adding more noise to the model.
+ 
+```{r}
+f2_3 <- r2_3/(1-r2_3)
+f2_3
+```
+
+Again, this is a large effect size, but it’s only slightly larger than the size of our ideal model. So, it’s even more justified to say that the extra variables are not as meaningful for our model.
+
+In order to create our regression table, we need to use the heteroskedasticity-robust standard errors to correct for any heteroskedasticity.
+
+```{r}
+coeftest(creg2, vcov = vcovHC)
+```
+
+This is the Variance-Covariance matrix for just our ideal model. We will then apply these to each of the models that are displayed in the table.
+
+```{r}
+(se.model1 = coeftest(creg1, vcov = vcovHC)[ , "Std. Error"])
+(se.model1t = coeftest(creg1t, vcov = vcovHC)[ , "Std. Error"])
+(se.model2 = coeftest(creg2, vcov = vcovHC)[ , "Std. Error"])
+(se.model3 = coeftest(creg3, vcov = vcovHC)[ , "Std. Error"])
+```
+
+```{r, warning=FALSE}
+stargazer(creg1, creg1t, creg2, creg3, type = "text", omit.stat = "f",
+          se = list(se.model1, se.model2, se.model3),
+          star.cutoffs = c(0.05, 0.01, 0.001))
+```
+
+#A Discussion of Omitted Variables
+
+In statistics, omitted-variable bias occurs when a statistical model leaves out one or more relevant variables. The bias results in the model attributing the effect of the missing variables to the estimated effects of the included variables.
+
+We note that a bias towards zero implies that our model depicts that the variable is not statistically significant as an indicator of crime. In contrast, a bias away from zero implies that our model depicts that the variable could be a statistically significant effect on crime rate. Below, we refer to either our ideal or complex models when describing the positive or negative magnitude of the bias.
+
+* Poor neighborhoods - Poverty can contribute to an increase in crime rate. So, the number of poor neighborhoods in a given area may have a direct impact on the result of our model. From our complex model, we estimate that this variable would have a more positive bias away from zero. We found that there are measurable parameters in the dataset that can act as proxies for describing the poor neighborhoods. 
+
+    + One way of measuring poverty is by taking the average wage of the whole population in the area. To do so, we can take all the wage information from different industries in the dataset and calculate the average of that: (wcon + wtuc + wtrd + wfir + wser + wmfg + wfed + wsta + wloc)/9. This formula only takes a simple average across all industries, but a better estimate would be to take a weighted average based on the population distribution of each industry. However, we do not have the number of people working in each industry.
+    
+    + Another way of approximating poverty is by looking at the tax revenue in a certain area. We can use the tax revenue per capita (taxpc) variable in the dataset as a proxy to measure poor neighborhoods.
+
+
+
+* Crime penalty - Criminal statutes identify a wide range of conduct considered illegal, such as theft or murder, made punishable by fines, imprisonment, and other sanctions. We believe that the severity of the crime may have a direct impact on crimes committed. From our complex model, we estimate that this variable would have a less positive bias towards zero. There are two variables identified in the dataset that can act as proxies in order to measure the omitted variable. 
+
+    + One is 'probability' of prison sentence (prbpris) can be a proxy to measure the most severe penalties for crime. 
+    
+    + Another one is the average prison sentence in days (avgsen), which can be a proxy for measuring the degree of crime penalty.
+
+
+* Employment rate - We suspect that a person with a stable job and regular income would potentially have less motivation for committing crimes, and hence employment may have an influence on our model result. We estimate that there is less positive bias towards zero.
+ 
+    + The employment rate is not in the dataset, but can be gathered through published statistics or census data.
+
+\n
+
+
+* Urban vs. suburban vs. rural - Cities can be segmented into different areas depending on the density of human-created structures and resident people in a particular area. These differences may impact the result of our model, and hence we believe this is another omitted variable that should be mentioned. This is a categorical variable with three categories. Compared to our ideal model, we estimate that this variable would have a more positive bias away from zero.
+
+    + We noticed that there is a variable in the dataset that can act as a proxy for this omitted variable - urban. It’s a binary variable indicating whether the certain area is in SMSA (=1 if it’s in SMSA). Although this variable is more generalized than the omitted variable we’d like to measure, we believe it would be a proper proxy for the omitted variable. However, there's a positive relationship between 'urban' and one of our key explanatory variables, 'density'. Including 'urban' may introduce multicollinearity into our model, which is something we'd have to keep in mind.
+
+\n
+
+* Climate - Temperature, humidity, snowfalls are different depending on the cities/areas. Climate usually has an impact on human activities, including criminal activities. We estimate that this variable would have a more positive bias away from zero, as human behaviors can be heavily influenced by climate.
+
+    + In order to estimate the impact of climate, we will take the maximum (hottest) temperature in the given year of time as a proxy for this omitted variable. This data can be gathered through various online weather forecasting platforms such as google weather, US climate data, etc.  
+
+
+The effects of the five omitted variables (poor neighborhoods, crime penalty, employment rate, urban vs suburban vs rural, and climate) are believed to be real. The omitted variables are all tied closely to the dependent variable. From real life experiences, these are the variables we would care about in a practical sense in estimating associations and causations of criminal activities.
+
+In addition to the five omitted variables listed above, there are also other variables we will discuss that are omitted, with no viable proxy in the dataset, that may influence our result.
+
+
+* Homelessness rate - This is yet another variable besides employment rate and poor neighborhoods that measures the stability of a given society and may impact the result of our model. When people are homeless, they tend to not have any stable resources or necessary supplies for living. Criminal activities may be an easy gateway to access resources. We thus estimate this variable to have a more positive bias away from zero.
+ 
+    + The homelessness rate is calculated as (number of homeless people in a given area) / (total population in a given area). 
+
+\n
+
+* Average education level - For this omitted variable, we would like to assign points to each level of education. To get the average education level for each county, we would take a sum of the points of people in the district and divide by the population. We estimate this variable to have a less positive bias towards zero. You may argue that people with lower education may tend to have a higher likelihood for criminal activities, but since we are only taking an average of the education level, the impact of individual cases becomes small. It's hard to argue for a high statistical significance.
+
+
+* Popular type of transportation - This is a categorical variable. One would suspect that if the bus is a popular means of transportation in certain areas, the opportunities for encountering criminals may be higher than if private vehicles are the main means for transportation. When considering a scale from public to private transportation, we estimate that this variable has a less positive bias towards zero.
+
+
+* Popular video game - This omitted variable is a way to measure the culture of a given society. A game usually contains certain information and would convey certain values to its players. For example, gun shooting games may be popular in certain areas and it contains violent/fighting scenes that could have an impact on people’s values and attitudes towards criminal activities. When considering a scale from nonviolent to violent video games, we estimate that this variable has a more positive bias away from zero. 
+
+
+* Popular music genre - Similar to the previous variable, this variable is another method to measure the cultural impact of a given society. Music is also believed to contain certain information and convey values to its audience. For example, rap music usually advocates for drugs and negative viewpoints about police. Thus, we estimate that this variable has a more positive bias away from zero.
+
+
+These are the variables that usually don’t tie directly to criminal activities. For example, homelessness rate would tie to employment rate on a large degree and employment rate is believed to be an important omitted variable. Also, when examining crime rate, culture may play a role but it’s definitely not a significant factor. Instead, cultural factors may introduce more noise that would deviate our interests in the variables that actually matter. Therefore, we believe that these variables could have real cultural significance in regards to crime rate, but may just be artifacts of omitted variables in a statistical sense.
+
+Overall, the variables mentioned above are just a few of many other possible omitted variables. Although they were not included as part of the original dataset, it’s plausible that they could have a significant effect as the determinants of crime.
+
+#Conclusion
+
+To conclude, we will first summarize our overall findings from the statistical tests as well as the regression table and then relate these results, especially that of our ideal model, to concerns of our research question for the political campaign.
+
+In summary, we note that each of the models, as described in our statistical tests, clearly indicate statistical significance meaning that there is a statistically significant relationship between the variables in the models. However, in order to truly illustrate the concerns of the political campaign, it's crucial that we understand the practical significance of our models as well. Although our first model with just the key explanatory variable of density provides us with a good baseline for model comparison, our log-log transformation of the model fails to do better. In addition, Model 2, our ideal or balanced model, clearly is more statistically and practically significant than our baseline model. In fact, our final model with the most number of covariates is only slightly more practically significant as can be seen through the $R^2$ and effect size values, providing greater justification that the extra variables do not add any significant meaning to the model.
+
+Furthermore, we note the key findings of the coefficients of each model from the regression table. The first key observation to note from the table is that the first column reiterates that the coefficient for the explanatory variable of density for Model 1 is highly statistically significant. On the other hand, column two of the table clearly describes that the transformation of our first model with the coefficient for log(density) is not significant. Additionally, it's evident that the regression table confirms our findings from the statistical tests for the comparison of our ideal model against Model 3. Specifically, we note that all coefficients in our balanced model are highly statistically significant, whereas the additional covariates that were added to our complex third model are not significant at all. We can thus ascertain that these additional covariates appear to just add more noise to the model.
+
+Finally, we will analyze the adjusted $R^2$ and residual standard error values from the regression table. The adjusted $R^2$ value indicates a modified version of the $R^2$ value of the model that is appropriately adjusted based on the number of predictor variables within the model. Model 2, our ideal or balanced model, displays the highest adjusted $R^2$ value in relation to the other models, indicating that it truly does explain most of the variation in the response variable around its mean. In addition, the residual standard error can be used as a measure of how much variation occurs in the residuals of a linear model. The table clearly showcases that our ideal model has the lowest value for the residual standard error. Thus, in relation to the other models, our ideal or balanced model is not only highly statistically and practically significant, but is also the best-fitting model.
+
+***Why is this important?***
+
+Our ideal model includes the following variables:
+* density or sizes of the populations
+* probability of arrest or the ratio of arrests to offenses
+* percentage of minority
+* police per capita
+
+From our statistical testing and regression table, it’s evident that each of these variables have a significant effect on crime rate.
+
+In regards to these variables, it’s important to be aware of the following concerns based on this model.
+
+A larger density or county size estimates an increase in crime rate. It’s important to realize that a practical example of this would be higher crime rates in densely populated cities versus spaced out communities in suburban areas. In fact, a concern to be noted is that monitoring of crime in populated cities may have been less effective simply due to the sheer number of people who live there. 
+
+As the ratio of arrests to offenses increases, crime rate decreases. It’s important to note that as police officers within counties in North Carolina get more effective at making arrests, it’s definitely plausible that the number of people willing to engage in criminal activities will go down since there is a higher chance of going to prison.
+
+A larger percentage of minority people within a county estimates an increase in crime rate. Concerns to be noted here include the treatment of minority people within counties as well as the possibility of only having limited resources within their environment. In other words, mistreatment of minority people and lack of resources for education or basic needs could drive these people to commit crime.
+
+An increase in police per capita also estimates an increase in crime rate. This clearly brings up concerns that simply hiring more police officers or allocating more officers to specific counties does not necessarily increase the effectiveness at which they perform their duties. 
+
+***Policy Suggestion***
+
+Based on the key points or concerns of the above variables, we would like to make a policy suggestion.
+
+From our research, it’s noted that there is a higher crime rate in densely populated areas. One possible reason for this is that within poor neighborhoods in these areas, especially those of minorities, there could be more people fighting or committing crimes in order to survive. Although stationing more police in these areas may seem to help reduce crime, this could mark the local governments as being untrusting of its minority people and possibly garner less support or respect. Therefore, the policy we would like to suggest is two-fold:
+
+* Set up food banks and provide educational tools or extracurricular activities in these poor areas.
+* Limit the number of police officers stationed in these areas and ensure monitoring is more widespread.
+
+If the local government enforces this policy, people in these areas can then receive the basic necessities they deserve and not feel threatened by the law enforcement’s potential “Big Brother” scrutiny. This then would help to reduce crime rate overall.
+
+Ultimately, based on our statistical research, it's evident that population does indeed play a key role in determining crime rates, and we hope the policy suggestion that we have generated will be applicable for the local government to take action on.
+
+
