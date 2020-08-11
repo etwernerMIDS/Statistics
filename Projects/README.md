@@ -10,7 +10,7 @@ The main focus of Project 1 is to use an OLS regression model to measure how muc
 
 * [Project 2](https://github.com/etwernerMIDS/Statistics/tree/master/Projects/Project2)
 
-The main focus of Project 2 is answer various questions in regards to 2018 Midterm Election Survey data. Each question requires the exploration, transformation, and analysis of different survey features. The various analytical approaches include Wilcoxon Tests, T-Tests, and Linear Regressions. Each test is applied when appropriate and the respective effect size is measured in order to determine practical significance.
+The main focus of Project 2 is answer various questions in regards to 2018 Midterm Election Survey data. Each question requires the exploration, transformation, and analysis of different survey features. The various analytical approaches for each question include Wilcoxon Tests, T-Tests, and Linear Regressions. Each test is applied when appropriate and the respective effect size is measured in order to determine practical significance.
 
 * [Project 3](https://github.com/etwernerMIDS/Statistics/tree/master/Projects/Project3)
 
