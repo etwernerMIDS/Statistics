@@ -16,4 +16,4 @@ The projects in this repository will cover the different aspects within the fiel
   * AIC/BIC
 * OLS Regression models
   * Classic Linear Model (CLM) Assumptions 
-* Omitted Variable Bias
+* Causal Relationships & Omitted Variable Bias
