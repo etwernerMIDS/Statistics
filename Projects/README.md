@@ -4,16 +4,16 @@
 
 ### Table of Contents
 
-* [Project 1](https://github.com/etwernerMIDS/Data_Engineering/tree/master/Projects/project-1-etwernerMIDS-master)
+* [Project 1](https://github.com/etwernerMIDS/Statistics/tree/master/Projects/Project1)
 
-The main focus of Project 1 is querying the data. This is accomplished with SQL while utilizing Google Cloud Platform (GCP) and BiqQuery. The queries answer business-driven questions using public datasets housed in GCP. The datasets are accessed through the web UI (BiqQuery) and command-line tools. Analysis and insights are performed in Jupyter Notebooks.
+The main focus of Project 1 is 
 
-* [Project 2](https://github.com/etwernerMIDS/Data_Engineering/tree/master/Projects/project-2-etwernerMIDS-master)
+* [Project 2](https://github.com/etwernerMIDS/Statistics/tree/master/Projects/Project2)
 
-The main focus of Project 2 is to take raw event data and make it queryable. This is accomplished by publishing and consuming the .json messages with Kafka, unrolling and transforming the messages with Spark, and then landing the messages in Hadoop (HDFS) for long term storage. Once the events are in HDFS, the data is ready to be queried. 
+The main focus of Project 2 is 
 
-* [Project 3](https://github.com/etwernerMIDS/Data_Engineering/tree/master/Projects/project-3-etwernerMIDS-master)
+* [Project 3](https://github.com/etwernerMIDS/Statistics/tree/master/Projects/Project3)
 
-The main focus of Project 3 is creating the entire data engineering pipeline, from end-to-end. A stream of data events are generated using Apache Bench, those events are then consumed by Kafka, filtered by Spark, and then stored in HDFS/Parquet. The data is then available for analysis using Presto.
+The main focus of Project 3 is 
 
 *All of these projects were completed for UCB's Master of Data Science Course W203 - Statistics for Data Science. These were completed using RStudio.* 
